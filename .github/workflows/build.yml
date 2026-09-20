@@ -1,0 +1,57 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (tests on JDK ${{ matrix.test-jvm }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Minecraft 26.x requires Java 25, so that is the compile target either way. The second leg
+        # runs the tests on the next JDK to catch forward-compatibility problems early.
+        test-jvm: ["25", "26"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDKs
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: |
+            25
+            ${{ matrix.test-jvm }}
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          # The default cache provider is a proprietary component under Gradle's terms of use; this
+          # one is the MIT implementation.
+          cache-provider: basic
+
+      - name: Build, check and verify the module graph
+        run: ./gradlew build verifyModuleGraph -Ptrace.testJvm=${{ matrix.test-jvm }} --stacktrace
+
+      - name: Publish trace-api to the local repository
+        run: ./gradlew :trace-api:publishToMavenLocal
+
+      - name: Upload plugin jars
+        if: matrix.test-jvm == '25'
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-jars
+          path: |
+            trace-paper/build/libs/*.jar
+            trace-test-harness/build/libs/*.jar
+          if-no-files-found: error

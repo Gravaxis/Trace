@@ -1,0 +1,97 @@
+name: Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Daily, so a Paper or Folia build that breaks Trace shows up without a push.
+    - cron: "17 4 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Boot on ${{ matrix.server }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - server: paper
+            task: smokePaper
+          - server: folia
+            task: smokeFolia
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Cache pinned server jars
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/trace-servers
+          key: trace-servers-${{ hashFiles('gradle/servers.properties') }}
+
+      # The Minecraft EULA was accepted by the repository owner for these throwaway servers; the
+      # launcher writes eula=true into the disposable run directory only. See ADR-0001.
+      - name: Run the scenario
+        run: ./gradlew ${{ matrix.task }} --stacktrace
+
+      - name: Upload server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs-${{ matrix.server }}
+          path: |
+            trace-test-harness/build/test-servers/*/server.log
+            trace-test-harness/build/test-servers/*/harness-result.json
+          if-no-files-found: warn
+
+  # Early warning for the next Minecraft line. Paper 26.3 is alpha-only and Folia has no 26.3 build,
+  # so this leg is advisory: it must never block a merge.
+  next-minecraft:
+    name: Boot on the newest Paper 26.3 alpha
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Resolve the newest 26.3 build
+        id: resolve
+        run: |
+          set -euo pipefail
+          UA="Trace-CI/0.1 (+https://gravaxis.in; info@gravaxis.in)"
+          JSON=$(curl -sS -H "User-Agent: $UA" https://fill.papermc.io/v3/projects/paper/versions/26.3/builds/latest)
+          echo "build=$(jq -r '.id' <<<"$JSON")" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(jq -r '.downloads["server:default"].checksums.sha256' <<<"$JSON")" >> "$GITHUB_OUTPUT"
+
+      - name: Boot the plugin on it
+        run: |
+          ./gradlew smokePaper \
+            -Ptrace.paper.version=26.3 \
+            -Ptrace.paper.build=${{ steps.resolve.outputs.build }} \
+            -Ptrace.paper.sha256=${{ steps.resolve.outputs.sha256 }} \
+            --stacktrace
