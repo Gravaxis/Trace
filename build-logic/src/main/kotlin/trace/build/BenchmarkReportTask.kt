@@ -167,8 +167,23 @@ abstract class BenchmarkReportTask : DefaultTask() {
         files.forEach { it.copyTo(target.resolve(it.name), overwrite = true) }
     }
 
+    /**
+     * The most recent results directory, by the timestamp the run recorded inside it.
+     *
+     * Not by name. A directory is named `<date>-<commit>`, and two runs on the same day sort by
+     * commit hash, which has no order at all: a fresh run could be judged older than the one before
+     * it, and `verifyReadmeTable` would then compare a regenerated README against stale results and
+     * fail with two correct tables side by side. A directory with no readable timestamp sorts
+     * oldest rather than being dropped, so a malformed one can never win.
+     */
     private fun latestResultDirectory(root: File): File? =
-        root.listFiles { f -> f.isDirectory }?.maxByOrNull { it.name }
+        root.listFiles { f -> f.isDirectory }?.maxByOrNull { recordedTimestamp(it) }
+
+    private fun recordedTimestamp(directory: File): String {
+        val environment = directory.resolve("environment.json")
+        if (!environment.isFile) return ""
+        return Json.asMap(Json.parse(environment.readText()))["timestamp"] as? String ?: ""
+    }
 
     private fun environmentJson(now: ZonedDateTime): String {
         val pins = java.util.Properties().apply {

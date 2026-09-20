@@ -228,8 +228,12 @@ public final class RollbackService {
             long currentChunk = Long.MIN_VALUE;
             boolean any = false;
             boolean stopped = false;
-            CursorPosition lastRow = null;
-            CursorPosition chunkEnd = null;
+            // The last row seen, kept as three primitives rather than an object. A rollback of fifty
+            // million rows would otherwise allocate fifty million of them, on the one path whose
+            // whole promise is that memory does not grow with the size of the job.
+            long lastChunk = 0;
+            long lastTimestamp = 0;
+            int lastSequence = 0;
 
             while (!stopped && cursor.next(batch)) {
                 for (int i = 0; i < batch.size(); i++) {
@@ -237,8 +241,7 @@ public final class RollbackService {
                     if (any && chunkKey != currentChunk) {
                         applyChunk(world, currentChunk, fold, summary);
                         fold.clear();
-                        chunkEnd = lastRow;
-                        checkpoint(id, chunkEnd, carried, summary);
+                        checkpoint(id, new CursorPosition(lastChunk, lastTimestamp, lastSequence), carried, summary);
                         if (cancelled.contains(id)) {
                             finalState = OperationState.CANCELLED;
                             stopped = true;
@@ -248,14 +251,15 @@ public final class RollbackService {
                     summary.scanned();
                     currentChunk = chunkKey;
                     any = true;
-                    lastRow = new CursorPosition(chunkKey, batch.timestamp(i), batch.sequence(i));
+                    lastChunk = chunkKey;
+                    lastTimestamp = batch.timestamp(i);
+                    lastSequence = batch.sequence(i);
                     fold.accept(batch.x(i), batch.y(i), batch.z(i), batch.afterState(i), batch.beforeState(i));
                 }
             }
             if (any && !stopped) {
                 applyChunk(world, currentChunk, fold, summary);
-                chunkEnd = lastRow;
-                checkpoint(id, chunkEnd, carried, summary);
+                checkpoint(id, new CursorPosition(lastChunk, lastTimestamp, lastSequence), carried, summary);
             }
             if (finalState == OperationState.DONE && summary.contendedCount() > 0) {
                 finalState = OperationState.PARTIAL;
