@@ -136,5 +136,13 @@ licenses far less than it appears to.
 
 ## How to add to this file
 
+### SQLite transaction scope checked for M3 (2026-09-21)
+
+Read SQLite's official [WAL documentation](https://www.sqlite.org/wal.html) and
+[ATTACH documentation](https://www.sqlite.org/lang_attach.html). Attached databases
+in WAL mode have per-database atomicity, not atomicity across the set. The current
+store's cross-database publication comments therefore cannot justify crash safety.
+The M3 execution plan requires a single-database hot/manifest transaction boundary.
+
 One row or bullet per source: what you read, where, and when. If a fact is load-bearing — a version
 pin, an API contract, a licence claim — cite the primary source, not a summary of it.
