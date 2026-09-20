@@ -7,9 +7,11 @@ but a human contributor gains from it too.
 Trace is a block, container and entity logging plugin with rollback, for Paper and Folia servers.
 Nothing is released. Milestones M0 to M2 are complete; M3 (the storage engine) is next.
 
-Three documents carry the rest: [ROADMAP.md](ROADMAP.md) for what is built and, under each item,
+Four documents carry the rest: [ROADMAP.md](ROADMAP.md) for what is built and, under each item,
 what is **not** established; [docs/decisions/](docs/decisions) for the sixteen ADRs that bind future
-work; [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor-facing version of the rules below.
+work; [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor-facing version of the rules below; and
+[docs/design/m3-storage-engine.md](docs/design/m3-storage-engine.md), a reviewed proposal for the
+next milestone whose most useful half is the list of traps a reviewer found in it.
 
 ---
 
@@ -219,7 +221,13 @@ baseline for anything.
 ## 9. This machine
 
 Windows, Git Bash available, JDK 25 at `C:\Program Files\Java\jdk-25.0.4`. Use `./gradlew`, never a
-system Gradle. Mapped ring files cannot be deleted on Windows while the mapping is live, so any test
+system Gradle.
+
+`D:\database.db` is a real 12.35 GB CoreProtect database the owner supplied for SPIKE-2. It holds
+real player data, including IP addresses in `co_session`. Read aggregates only — page and byte totals
+from `dbstat`, row counts — never rows, and commit nothing derived from it until the measurement task
+exists. It has been observed once already; the method and findings are in
+[provenance.md](docs/decisions/provenance.md) and the figures are explicitly not publishable. Mapped ring files cannot be deleted on Windows while the mapping is live, so any test
 using `@TempDir` with a `CaptureService` or `MappedEventRing` must close it in `@AfterEach`.
 
 Commits are authored `Madhav Kothandaraman <info@gravaxis.in>`, Conventional Commits, one concern
