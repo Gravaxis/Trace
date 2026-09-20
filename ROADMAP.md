@@ -6,8 +6,8 @@ and an unmet item is reported as unmet rather than carried quietly.
 | # | Milestone | State |
 |---|---|---|
 | M0 | Skeleton: modules, build, licences, a plugin that loads on Paper and Folia | **done** |
-| M1 | Benchmark and crash harness — built *before* any feature | next |
-| M2 | Walking skeleton: one event type captured with zero allocation, journalled, sealed into a shard, queried back, rolled back | planned |
+| M1 | Benchmark and crash harness — built *before* any feature | **done** |
+| M2 | Walking skeleton: one event type captured with zero allocation, journalled, sealed into a shard, queried back, rolled back | next |
 | M3 | Storage engine: sharding, sealing, compaction, manifest, dictionaries, blobs, retention, purge, verify, quarantine | planned |
 | M4 | Full capture: every kind and cause, block entities, entities, containers, sessions | planned |
 | M5 | Mass edits: WorldEdit and FAWE hooks, section-diff patches, densification | planned |
@@ -31,6 +31,23 @@ Post-1.0: the web log browser, PostgreSQL and ClickHouse tiers, further importer
 * Error Prone and NullAway failing the build on a null dereference; Spotless enforcing SPDX headers.
 * The design record in [docs/decisions](docs/decisions), including the provenance of every external
   fact the build relies on.
+
+## What M1 delivered
+
+* `./gradlew benchmark` — JMH microbenchmarks, a block-churn scenario on both pinned platforms, and
+  the crash rig — writing `benchmarks/results/<date>-<commit>/` with the machine, JVM, heap and
+  server builds recorded alongside every number.
+* The README's benchmark table generated from that directory, and `verifyReadmeTable` failing the
+  build if anyone edits it by hand.
+* Gate P1 in two forms: an exact per-thread byte count that must read zero (run again with escape
+  analysis disabled), and JMH's profiler with a floor-derived threshold. The measurements, and the
+  deviation from the spec's literal `== 0.0`, are in
+  [ADR-0009](docs/decisions/0009-allocation-gate.md) — **awaiting owner ratification**.
+* A crash rig that kills a server with SIGKILL after a seeded random delay, restarts it, and
+  verifies what survived; it currently shoots at a forced append log, and points at the real journal
+  in M2.
+* Tick percentiles from `ServerTickEndEvent` and post-GC heap sampling, because TPS is clamped at 20
+  and peak heap without a collection is not a measurement.
 
 ## Open questions carried forward
 
