@@ -94,20 +94,11 @@ tasks.named("check") {
   dependsOn(testWithoutEscapeAnalysis)
 }
 
-val gitCommit = providers.exec {
-  commandLine("git", "rev-parse", "--short=12", "HEAD")
-}.standardOutput.asText.map { it.trim() }
-
-val gitDirty = providers.exec {
-  commandLine("git", "status", "--porcelain")
-}.standardOutput.asText.map { it.isNotBlank() }
-
 val harnessBuildDir = project(":trace-test-harness").layout.buildDirectory
 val resultsDirectory = layout.projectDirectory.dir("results")
 
 fun BenchmarkReportTask.configureCommon() {
-  commit.set(gitCommit)
-  dirty.set(gitDirty)
+  repositoryRoot.set(rootProject.layout.projectDirectory.asFile.absolutePath)
   gradleVersion.set(gradle.gradleVersion)
   serverPins.set(rootProject.layout.projectDirectory.file("gradle/servers.properties"))
   resultsRoot.set(resultsDirectory.asFile.absolutePath)

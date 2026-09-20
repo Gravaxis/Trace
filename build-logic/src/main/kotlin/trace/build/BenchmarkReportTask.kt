@@ -32,15 +32,16 @@ import org.gradle.work.DisableCachingByDefault
 @DisableCachingByDefault(because = "Writes a timestamped directory; cheap to re-run")
 abstract class BenchmarkReportTask : DefaultTask() {
 
+    private var commit: String = "unknown"
+    private var dirty: Boolean = false
+
     /** `write` or `verify`. */
     @get:Input
     abstract val mode: Property<String>
 
+    /** The repository to ask for the commit and the working-tree state, at execution time. */
     @get:Input
-    abstract val commit: Property<String>
-
-    @get:Input
-    abstract val dirty: Property<Boolean>
+    abstract val repositoryRoot: Property<String>
 
     @get:Input
     abstract val gradleVersion: Property<String>
@@ -75,6 +76,14 @@ abstract class BenchmarkReportTask : DefaultTask() {
     fun run() {
         val readme = File(readmePath.get())
         val root = File(resultsRoot.get())
+        commit = git("rev-parse", "--short=12", "HEAD").ifBlank { "unknown" }
+        // Asked at execution time, not configuration time: a value captured in the configuration
+        // cache would report the state of some earlier build. Results this task writes are ignored,
+        // since they appear while it runs.
+        dirty = git("status", "--porcelain")
+            .lines()
+            .filter { it.isNotBlank() }
+            .any { !it.substringAfter(' ').trim().startsWith("benchmarks/results/") }
         when (mode.get()) {
             "write" -> write(root, readme)
             "verify" -> verify(root, readme)
@@ -91,8 +100,8 @@ abstract class BenchmarkReportTask : DefaultTask() {
 
         val now = ZonedDateTime.now(ZoneOffset.UTC)
         val date = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-        val suffix = if (dirty.get()) "-dirty" else ""
-        val dir = root.resolve("$date-${commit.get()}$suffix")
+        val suffix = if (dirty) "-dirty" else ""
+        val dir = root.resolve("$date-$commit$suffix")
         dir.mkdirs()
 
         dir.resolve("environment.json").writeText(environmentJson(now))
@@ -139,6 +148,19 @@ abstract class BenchmarkReportTask : DefaultTask() {
             .filter { it.isFile && it.extension == "json" }
             .sortedBy { it.name }
 
+    private fun git(vararg args: String): String = try {
+        val process = ProcessBuilder(listOf("git", *args))
+            .directory(File(repositoryRoot.get()))
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        process.waitFor()
+        if (process.exitValue() == 0) output.trim() else ""
+    } catch (e: Exception) {
+        logger.warn("Could not run git ${args.joinToString(" ")}: {}", e.toString())
+        ""
+    }
+
     private fun copyInto(target: File, files: List<File>) {
         if (files.isEmpty()) return
         target.mkdirs()
@@ -155,8 +177,8 @@ abstract class BenchmarkReportTask : DefaultTask() {
         val runtime = Runtime.getRuntime()
         val entries = buildList {
             add("timestamp" to Json.quote(now.format(DateTimeFormatter.ISO_INSTANT)))
-            add("commit" to Json.quote(commit.get()))
-            add("dirtyWorkingTree" to dirty.get().toString())
+            add("commit" to Json.quote(commit))
+            add("dirtyWorkingTree" to dirty.toString())
             add("os" to Json.quote("${System.getProperty("os.name")} ${System.getProperty("os.version")}"))
             add("arch" to Json.quote(System.getProperty("os.arch")))
             add("cpu" to Json.quote(cpuModel()))

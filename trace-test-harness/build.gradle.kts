@@ -1,6 +1,7 @@
 import java.util.Properties
 import trace.build.CrashInjectionTask
 import trace.build.ServerScenarioTask
+import trace.build.TestServerService
 import xyz.jpenilla.resourcefactory.paper.PaperPluginYaml
 
 plugins {
@@ -55,6 +56,12 @@ val launcher = javaToolchains.launcherFor {
 // Server jars are cached outside the project tree and never committed.
 val serverCache = File(gradle.gradleUserHomeDir, "caches/trace-servers")
 
+// One test server at a time: see TestServerService for why.
+val testServerLock =
+  gradle.sharedServices.registerIfAbsent("traceTestServer", TestServerService::class) {
+    maxParallelUsages.set(1)
+  }
+
 // Benchmarks run on a deliberately small heap: numbers measured with a large one say nothing about
 // the servers this plugin is for. The size is recorded in every result.
 val benchmarkJvmArgs = listOf("-Xms1G", "-Xmx1G", "-XX:+UseG1GC")
@@ -76,6 +83,7 @@ fun registerScenario(
   buildNumber.set(pin("$server.build").map { it.toInt() })
   sha256.set(pin("$server.sha256"))
   contact.set(providers.gradleProperty("trace.contact").orElse("unknown"))
+  usesService(testServerLock)
   scenario.set(scenarioName)
   scenarioParams.set(params)
   timeoutSeconds.set(420)
@@ -130,6 +138,7 @@ val crashTest = tasks.register<CrashInjectionTask>("crashTest") {
   buildNumber.set(pin("paper.build").map { it.toInt() })
   sha256.set(pin("paper.sha256"))
   contact.set(providers.gradleProperty("trace.contact").orElse("unknown"))
+  usesService(testServerLock)
   writeScenario.set("crash-write")
   verifyScenario.set("crash-verify")
   scenarioParams.set(mapOf("rate" to "5000", "forceEvery" to "1"))
