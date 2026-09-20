@@ -30,7 +30,7 @@ import java.sql.Statement;
 final class SqliteSchema {
 
     /** Bumped when the on-disk format changes in a way a previous build cannot read. */
-    static final int FORMAT_VERSION = 1;
+    static final int FORMAT_VERSION = 2;
 
     private SqliteSchema() {}
 
@@ -95,6 +95,32 @@ final class SqliteSchema {
                       dropped INTEGER NOT NULL,
                       detail TEXT NOT NULL)""");
             statement.execute("CREATE INDEX IF NOT EXISTS gap_window ON gap(to_ts, from_ts)");
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS rollback_op(
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      run_id TEXT NOT NULL,
+                      world INTEGER NOT NULL,
+                      min_x INTEGER NOT NULL,
+                      min_y INTEGER NOT NULL,
+                      min_z INTEGER NOT NULL,
+                      max_x INTEGER NOT NULL,
+                      max_y INTEGER NOT NULL,
+                      max_z INTEGER NOT NULL,
+                      from_ts INTEGER NOT NULL,
+                      to_ts INTEGER NOT NULL,
+                      actor INTEGER NOT NULL,
+                      state INTEGER NOT NULL,
+                      cursor_chunk INTEGER,
+                      cursor_ts INTEGER,
+                      cursor_seq INTEGER,
+                      applied INTEGER NOT NULL,
+                      already INTEGER NOT NULL,
+                      mismatched INTEGER NOT NULL,
+                      scanned INTEGER NOT NULL,
+                      chunks INTEGER NOT NULL,
+                      started_at INTEGER NOT NULL,
+                      updated_at INTEGER NOT NULL)""");
+            statement.execute("CREATE INDEX IF NOT EXISTS rollback_op_state ON rollback_op(state, id)");
         }
     }
 

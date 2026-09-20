@@ -8,6 +8,7 @@
 
 package in.gravaxis.trace.storage.sqlite;
 
+import in.gravaxis.trace.core.geom.BlockBox;
 import in.gravaxis.trace.core.geom.Morton;
 import in.gravaxis.trace.core.record.EventRecords;
 import in.gravaxis.trace.core.time.TraceEpoch;
@@ -15,7 +16,10 @@ import in.gravaxis.trace.storage.CursorPosition;
 import in.gravaxis.trace.storage.EventStore;
 import in.gravaxis.trace.storage.GapRecord;
 import in.gravaxis.trace.storage.MutationCursor;
+import in.gravaxis.trace.storage.OperationProgress;
+import in.gravaxis.trace.storage.OperationState;
 import in.gravaxis.trace.storage.RecordBatch;
+import in.gravaxis.trace.storage.RollbackOperation;
 import in.gravaxis.trace.storage.ScanPlan;
 import in.gravaxis.trace.storage.StoreException;
 import in.gravaxis.trace.storage.StoreStats;
@@ -68,6 +72,12 @@ public final class SqliteEventStore implements EventStore {
     private static final String META_APPLIED_LSN = "applied_lsn";
     private static final String META_FORMAT = "format_version";
     private static final int STATE_LIVE = 0;
+
+    private static final String OPERATION_COLUMNS = """
+            SELECT id, run_id, world, min_x, min_y, min_z, max_x, max_y, max_z, from_ts, to_ts, actor,
+                   state, cursor_chunk, cursor_ts, cursor_seq, applied, already, mismatched, scanned,
+                   chunks, started_at, updated_at
+            FROM rollback_op""";
 
     /** No frame has been applied yet. Journal positions start at zero, so this cannot be zero. */
     private static final long NOTHING_APPLIED = -1L;
@@ -156,7 +166,12 @@ public final class SqliteEventStore implements EventStore {
 
     private void initialiseMeta() throws SQLException, StoreException {
         String format = readMeta(META_FORMAT);
-        if (format == null) {
+        if (format == null || Integer.parseInt(format) < SqliteSchema.FORMAT_VERSION) {
+            // Rewritten, not just written-when-absent. The tables above are created unconditionally,
+            // so an older directory silently gains them; if the recorded version stayed behind, an
+            // older Trace would keep opening the directory happily and would not see, for instance,
+            // that a rollback was left half-applied. Upgrading is one-way, which is what the message
+            // below already promises.
             writeMeta(META_FORMAT, Integer.toString(SqliteSchema.FORMAT_VERSION));
         } else if (Integer.parseInt(format) > SqliteSchema.FORMAT_VERSION) {
             throw new StoreException(
@@ -470,6 +485,169 @@ public final class SqliteEventStore implements EventStore {
             throw new StoreException(StoreException.Reason.INTERNAL, "Could not read gaps: " + e.getMessage(), e);
         }
         return gaps;
+    }
+
+    @Override
+    public synchronized long beginOperation(RollbackOperation operation) throws StoreException {
+        try (PreparedStatement insert = writer.prepareStatement("""
+                INSERT INTO rollback_op(
+                  run_id, world, min_x, min_y, min_z, max_x, max_y, max_z, from_ts, to_ts, actor, state,
+                  cursor_chunk, cursor_ts, cursor_seq, applied, already, mismatched, scanned, chunks,
+                  started_at, updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL,?,?,?,?,?,?,?)""")) {
+            BlockBox box = operation.box();
+            OperationProgress progress = operation.progress();
+            int index = 1;
+            insert.setString(index++, operation.runId());
+            insert.setInt(index++, operation.worldId());
+            insert.setInt(index++, box.minX());
+            insert.setInt(index++, box.minY());
+            insert.setInt(index++, box.minZ());
+            insert.setInt(index++, box.maxX());
+            insert.setInt(index++, box.maxY());
+            insert.setInt(index++, box.maxZ());
+            insert.setLong(index++, operation.fromMillis());
+            insert.setLong(index++, operation.toMillis());
+            insert.setInt(index++, operation.actorId());
+            insert.setInt(index++, operation.state().id());
+            insert.setLong(index++, progress.applied());
+            insert.setLong(index++, progress.already());
+            insert.setLong(index++, progress.mismatched());
+            insert.setLong(index++, progress.scanned());
+            insert.setLong(index++, progress.chunks());
+            insert.setLong(index++, operation.startedAtMillis());
+            insert.setLong(index, operation.updatedAtMillis());
+            insert.executeUpdate();
+            try (ResultSet keys = insert.getGeneratedKeys()) {
+                if (!keys.next()) {
+                    throw new StoreException(
+                            StoreException.Reason.INTERNAL, "The store did not give the operation an id");
+                }
+                return keys.getLong(1);
+            }
+        } catch (SQLException e) {
+            throw new StoreException(
+                    StoreException.Reason.INTERNAL, "Could not record the rollback: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public synchronized void checkpointOperation(
+            long operationId, @Nullable CursorPosition cursor, OperationProgress progress) throws StoreException {
+        // A null cursor leaves the stored one alone rather than clearing it. That is what a caller
+        // means when it has counters to record but cannot promise the work up to here is complete -
+        // a chunk it could not apply, for instance.
+        String sql = cursor == null
+                ? "UPDATE rollback_op SET applied=?, already=?, mismatched=?, scanned=?, chunks=?, updated_at=?"
+                        + " WHERE id = ?"
+                : "UPDATE rollback_op SET applied=?, already=?, mismatched=?, scanned=?, chunks=?, updated_at=?,"
+                        + " cursor_chunk=?, cursor_ts=?, cursor_seq=? WHERE id = ?";
+        try (PreparedStatement update = writer.prepareStatement(sql)) {
+            int index = 1;
+            index = bindProgress(update, index, progress);
+            update.setLong(index++, System.currentTimeMillis());
+            if (cursor != null) {
+                update.setLong(index++, cursor.chunkKey());
+                update.setLong(index++, cursor.timestamp());
+                update.setInt(index++, cursor.sequence());
+            }
+            update.setLong(index, operationId);
+            update.executeUpdate();
+        } catch (SQLException e) {
+            throw new StoreException(
+                    StoreException.Reason.INTERNAL, "Could not checkpoint the rollback: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public synchronized void finishOperation(long operationId, OperationState state, OperationProgress progress)
+            throws StoreException {
+        try (PreparedStatement update = writer.prepareStatement(
+                "UPDATE rollback_op SET applied=?, already=?, mismatched=?, scanned=?, chunks=?, updated_at=?,"
+                        + " state=? WHERE id = ?")) {
+            int index = 1;
+            index = bindProgress(update, index, progress);
+            update.setLong(index++, System.currentTimeMillis());
+            update.setInt(index++, state.id());
+            update.setLong(index, operationId);
+            update.executeUpdate();
+        } catch (SQLException e) {
+            throw new StoreException(
+                    StoreException.Reason.INTERNAL, "Could not finish the rollback: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public synchronized @Nullable RollbackOperation operation(long operationId) throws StoreException {
+        try (PreparedStatement statement = writer.prepareStatement(OPERATION_COLUMNS + " WHERE id = ?")) {
+            statement.setLong(1, operationId);
+            try (ResultSet rows = statement.executeQuery()) {
+                return rows.next() ? readOperation(rows) : null;
+            }
+        } catch (SQLException e) {
+            throw new StoreException(
+                    StoreException.Reason.INTERNAL, "Could not read the rollback: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public synchronized List<RollbackOperation> unfinishedOperations() throws StoreException {
+        List<RollbackOperation> operations = new ArrayList<>();
+        try (PreparedStatement statement =
+                writer.prepareStatement(OPERATION_COLUMNS + " WHERE state <> ? ORDER BY id")) {
+            statement.setInt(1, OperationState.DONE.id());
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    operations.add(readOperation(rows));
+                }
+            }
+        } catch (SQLException e) {
+            throw new StoreException(
+                    StoreException.Reason.INTERNAL, "Could not read the rollbacks: " + e.getMessage(), e);
+        }
+        return operations;
+    }
+
+    private static int bindProgress(PreparedStatement statement, int from, OperationProgress progress)
+            throws SQLException {
+        int index = from;
+        statement.setLong(index++, progress.applied());
+        statement.setLong(index++, progress.already());
+        statement.setLong(index++, progress.mismatched());
+        statement.setLong(index++, progress.scanned());
+        statement.setLong(index++, progress.chunks());
+        return index;
+    }
+
+    private static RollbackOperation readOperation(ResultSet rows) throws SQLException {
+        long cursorChunk = rows.getLong("cursor_chunk");
+        CursorPosition cursor = rows.wasNull()
+                ? null
+                : new CursorPosition(cursorChunk, rows.getLong("cursor_ts"), rows.getInt("cursor_seq"));
+        return new RollbackOperation(
+                rows.getLong("id"),
+                rows.getString("run_id"),
+                rows.getInt("world"),
+                new BlockBox(
+                        rows.getInt("min_x"),
+                        rows.getInt("min_y"),
+                        rows.getInt("min_z"),
+                        rows.getInt("max_x"),
+                        rows.getInt("max_y"),
+                        rows.getInt("max_z")),
+                rows.getLong("from_ts"),
+                rows.getLong("to_ts"),
+                rows.getInt("actor"),
+                OperationState.byId(rows.getInt("state")),
+                cursor,
+                new OperationProgress(
+                        rows.getLong("applied"),
+                        rows.getLong("already"),
+                        rows.getLong("mismatched"),
+                        rows.getLong("scanned"),
+                        rows.getLong("chunks")),
+                rows.getLong("started_at"),
+                rows.getLong("updated_at"));
     }
 
     @Override

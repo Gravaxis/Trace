@@ -9,6 +9,7 @@
 package in.gravaxis.trace.storage.sqlite;
 
 import in.gravaxis.trace.core.geom.MortonRange;
+import in.gravaxis.trace.storage.CursorPosition;
 import in.gravaxis.trace.storage.ScanPlan;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -50,6 +51,12 @@ final class KeysetRowSource implements AutoCloseable {
     private long lastChunk;
     private long lastKey;
 
+    // Where a resumed scan starts. Every range begins seeded with this rather than unseeded, so a
+    // resume is a predicate on the clustered key in every range it touches, not a skip in Java.
+    private final boolean hasResume;
+    private final long resumeChunk;
+    private final long resumeKey;
+
     // The row currently at the head of this source.
     private boolean hasRow;
     private long rowChunk;
@@ -73,10 +80,28 @@ final class KeysetRowSource implements AutoCloseable {
         // The window is half-open in time, so the last key of the last millisecond is excluded.
         this.highKey = ShardKeys.lowKey(baseMillis, plan.toMillis()) - 1;
         this.exhausted = ranges.isEmpty() || plan.fromMillis() >= plan.toMillis();
+
+        CursorPosition resume = plan.resumeAfter();
+        this.hasResume = resume != null;
+        this.resumeChunk = resume == null ? 0 : resume.chunkKey();
+        this.resumeKey = resume == null ? 0 : ShardKeys.key(baseMillis, resume.timestamp(), resume.sequence());
+        this.hasLastKey = hasResume;
+        this.lastChunk = resumeChunk;
+        this.lastKey = resumeKey;
     }
 
     boolean hasRow() {
         return hasRow;
+    }
+
+    /**
+     * True when the next page will carry a keyset predicate.
+     *
+     * <p>Exposed so a test can prove a resumed scan seeks rather than reads and discards. The two
+     * produce identical rows, so no assertion about the result set can tell them apart.
+     */
+    boolean isSeeking() {
+        return hasLastKey;
     }
 
     long chunkKey() {
@@ -212,7 +237,11 @@ final class KeysetRowSource implements AutoCloseable {
 
     private void nextRange() {
         rangeIndex++;
-        hasLastKey = false;
+        // Back to the resume position, not to unseeded: a range the resumed scan has already passed
+        // must stay passed. Ranges entirely beyond the position simply return nothing.
+        hasLastKey = hasResume;
+        lastChunk = resumeChunk;
+        lastKey = resumeKey;
         if (rangeIndex >= ranges.size()) {
             exhausted = true;
         }

@@ -9,6 +9,7 @@
 package in.gravaxis.trace.storage;
 
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A place events are stored and read back from.
@@ -76,6 +77,41 @@ public interface EventStore extends AutoCloseable {
 
     /** Counters for {@code /trace status} and the health watchdog. */
     StoreStats stats() throws StoreException;
+
+    /**
+     * Records that a rollback has started, and returns its id.
+     *
+     * <p>Written before the first block is touched. An operation that exists with no matching change
+     * in the world is harmless; a world changed by an operation that was never recorded cannot be
+     * continued or explained.
+     */
+    long beginOperation(RollbackOperation operation) throws StoreException;
+
+    /**
+     * Durably records how far an operation has got.
+     *
+     * <p>The cursor is a promise: everything up to and including it has been dealt with, so a later
+     * run may start after it. A caller that cannot make that promise for some part of the work —
+     * a chunk it could not apply — must stop advancing the cursor rather than carry on past it.
+     *
+     * @param cursor the last position durably dealt with, or null to leave the stored one alone
+     */
+    void checkpointOperation(long operationId, @Nullable CursorPosition cursor, OperationProgress progress)
+            throws StoreException;
+
+    /** Records an operation's final state and counters. */
+    void finishOperation(long operationId, OperationState state, OperationProgress progress) throws StoreException;
+
+    /** One operation, or null if there is no such id. */
+    @Nullable
+    RollbackOperation operation(long operationId) throws StoreException;
+
+    /**
+     * Operations that may still have work left, oldest first.
+     *
+     * <p>What a restart reads to find out whether the last run left a world half-restored.
+     */
+    List<RollbackOperation> unfinishedOperations() throws StoreException;
 
     @Override
     void close() throws StoreException;

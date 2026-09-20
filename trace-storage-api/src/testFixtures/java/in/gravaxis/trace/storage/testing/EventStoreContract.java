@@ -21,7 +21,10 @@ import in.gravaxis.trace.storage.EventStore;
 import in.gravaxis.trace.storage.GapRecord;
 import in.gravaxis.trace.storage.MutationBatch;
 import in.gravaxis.trace.storage.MutationCursor;
+import in.gravaxis.trace.storage.OperationProgress;
+import in.gravaxis.trace.storage.OperationState;
 import in.gravaxis.trace.storage.RecordBatch;
+import in.gravaxis.trace.storage.RollbackOperation;
 import in.gravaxis.trace.storage.ScanPlan;
 import in.gravaxis.trace.storage.StoreException;
 import java.nio.file.Path;
@@ -257,6 +260,100 @@ public abstract class EventStoreContract {
 
         assertThat(store.appliedLsn()).isEqualTo(6);
         assertThat(scanAll(planFor(events))).hasSize(4);
+    }
+
+    @Test
+    @DisplayName("resuming a scan returns exactly the rows that were left")
+    void resumingReturnsExactlyTheRemainder() throws StoreException {
+        List<Events> events = line(20, T0);
+        append(events, 11);
+        store.seal();
+
+        ScanPlan plan = planFor(events);
+        List<Row> all = scanAll(plan);
+        assertThat(all).hasSize(20);
+
+        // Read the first seven, remember where that left the cursor, then resume from it.
+        CursorPosition mark;
+        List<Row> firstPart = new ArrayList<>();
+        MutationBatch batch = new MutationBatch(7);
+        try (MutationCursor cursor = store.scan(plan.withBatchSize(7))) {
+            assertThat(cursor.next(batch)).isTrue();
+            for (int i = 0; i < batch.size(); i++) {
+                firstPart.add(new Row(
+                        batch.x(i),
+                        batch.y(i),
+                        batch.z(i),
+                        batch.timestamp(i),
+                        batch.sequence(i),
+                        batch.beforeState(i),
+                        batch.afterState(i),
+                        batch.actorId(i)));
+            }
+            mark = cursor.position();
+        }
+        assertThat(firstPart).hasSize(7);
+
+        List<Row> remainder = scanAll(plan.resumeAfter(mark));
+
+        assertThat(firstPart).containsExactlyElementsOf(all.subList(0, 7));
+        assertThat(remainder).containsExactlyElementsOf(all.subList(7, 20));
+    }
+
+    @Test
+    @DisplayName("a rollback that was interrupted is still there after a restart, with its cursor")
+    void remembersAnUnfinishedRollback() throws StoreException {
+        List<Events> events = line(4, T0);
+        append(events, 12);
+
+        BlockBox box = BlockBox.around(0, 64, 0, 32);
+        RollbackOperation starting = RollbackOperation.starting("run-one", WORLD, box, T0 - 1000, T0 + 1000, 9, T0);
+        long id = store.beginOperation(starting);
+        assertThat(id).isPositive();
+
+        CursorPosition reached = new CursorPosition(7, T0 + 3, 2);
+        store.checkpointOperation(id, reached, new OperationProgress(3, 0, 1, 4, 1));
+
+        // The process dies here: nothing writes a final state. That is what "interrupted" is.
+        store.close();
+        store = open(directory);
+
+        RollbackOperation found = requireNonNull(store.operation(id), "the operation must still be there");
+        assertThat(found.state()).isEqualTo(OperationState.RUNNING);
+        assertThat(found.cursor()).isEqualTo(reached);
+        assertThat(found.box()).isEqualTo(box);
+        assertThat(found.fromMillis()).isEqualTo(T0 - 1000);
+        assertThat(found.toMillis()).isEqualTo(T0 + 1000);
+        assertThat(found.progress().applied()).isEqualTo(3);
+        assertThat(found.progress().mismatched()).isEqualTo(1);
+        assertThat(store.unfinishedOperations())
+                .extracting(RollbackOperation::id)
+                .containsExactly(id);
+
+        // A different run may pick it up; the run that owns it may not, because that one may still
+        // be working.
+        assertThat(found.isResumable("run-two")).isTrue();
+        assertThat(found.isResumable("run-one")).isFalse();
+
+        store.finishOperation(id, OperationState.DONE, new OperationProgress(4, 0, 1, 4, 1));
+        assertThat(store.unfinishedOperations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a checkpoint with no cursor records progress without promising more was finished")
+    void keepsTheCursorWhenAChunkCouldNotBeApplied() throws StoreException {
+        BlockBox box = BlockBox.around(0, 64, 0, 32);
+        long id = store.beginOperation(RollbackOperation.starting("run-one", WORLD, box, T0 - 1000, T0 + 1000, 9, T0));
+
+        CursorPosition safe = new CursorPosition(2, T0 + 1, 0);
+        store.checkpointOperation(id, safe, new OperationProgress(1, 0, 0, 1, 1));
+        // A chunk that could not be applied: the counters move, the cursor must not, or resuming
+        // would step over work that was never done.
+        store.checkpointOperation(id, null, new OperationProgress(1, 0, 0, 9, 2));
+
+        RollbackOperation found = requireNonNull(store.operation(id), "the operation must still be there");
+        assertThat(found.cursor()).isEqualTo(safe);
+        assertThat(found.progress().scanned()).isEqualTo(9);
     }
 
     @Test

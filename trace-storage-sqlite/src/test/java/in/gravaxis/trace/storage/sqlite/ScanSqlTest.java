@@ -10,6 +10,12 @@ package in.gravaxis.trace.storage.sqlite;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import in.gravaxis.trace.core.geom.BlockBox;
+import in.gravaxis.trace.storage.CursorPosition;
+import in.gravaxis.trace.storage.ScanPlan;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -40,6 +46,31 @@ class ScanSqlTest {
                                 .contains(newestFirst ? "(c, k) < (?, ?)" : "(c, k) > (?, ?)");
                     }
                 }
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("a resumed scan seeks from its first page, rather than reading and discarding")
+    void aResumedScanSeeksImmediately() throws SQLException {
+        ScanPlan plan = ScanPlan.of(
+                1, BlockBox.around(0, 64, 0, 32), 1_800_000_000_000L, 1_800_000_060_000L, ScanPlan.Order.NEWEST_FIRST);
+
+        // No assertion about the rows a resumed scan returns can tell a seek from a scan that reads
+        // everything and throws the first half away: both return the same rows. This is the
+        // difference, and it is the whole reason resuming an interrupted rollback costs the
+        // remainder rather than the job.
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite::memory:")) {
+            try (KeysetRowSource fresh = new KeysetRowSource(connection, "ev", 0L, plan)) {
+                assertThat(fresh.isSeeking())
+                        .as("a scan from the beginning has nothing to seek past")
+                        .isFalse();
+            }
+            ScanPlan resumed = plan.resumeAfter(new CursorPosition(9, 1_800_000_030_000L, 4));
+            try (KeysetRowSource source = new KeysetRowSource(connection, "ev", 0L, resumed)) {
+                assertThat(source.isSeeking())
+                        .as("a resumed scan must carry the keyset predicate into its very first page")
+                        .isTrue();
             }
         }
     }

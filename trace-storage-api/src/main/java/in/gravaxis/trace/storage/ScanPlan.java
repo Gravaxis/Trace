@@ -30,6 +30,8 @@ import org.jspecify.annotations.Nullable;
  * @param actorIds actors to keep, or null for all of them
  * @param order the order rows are returned in
  * @param batchSize rows per page; keyset pagination, never an offset
+ * @param resumeAfter skip everything up to and including this position, or null to start at the
+ *     beginning; this is how an interrupted rollback continues without re-reading what it did
  */
 public record ScanPlan(
         int worldId,
@@ -39,7 +41,8 @@ public record ScanPlan(
         long toMillis,
         int @Nullable [] actorIds,
         Order order,
-        int batchSize) {
+        int batchSize,
+        @Nullable CursorPosition resumeAfter) {
 
     /** Direction of a scan. */
     public enum Order {
@@ -70,15 +73,34 @@ public record ScanPlan(
     public static ScanPlan of(int worldId, BlockBox box, long fromMillis, long toMillis, Order order) {
         ChunkRect rect = box.chunks();
         return new ScanPlan(
-                worldId, MortonRanges.decompose(rect), box, fromMillis, toMillis, null, order, DEFAULT_BATCH_SIZE);
+                worldId,
+                MortonRanges.decompose(rect),
+                box,
+                fromMillis,
+                toMillis,
+                null,
+                order,
+                DEFAULT_BATCH_SIZE,
+                null);
     }
 
     public ScanPlan withActors(int... actors) {
-        return new ScanPlan(worldId, ranges, box, fromMillis, toMillis, actors, order, batchSize);
+        return new ScanPlan(worldId, ranges, box, fromMillis, toMillis, actors, order, batchSize, resumeAfter);
     }
 
     public ScanPlan withBatchSize(int size) {
-        return new ScanPlan(worldId, ranges, box, fromMillis, toMillis, actorIds, order, size);
+        return new ScanPlan(worldId, ranges, box, fromMillis, toMillis, actorIds, order, size, resumeAfter);
+    }
+
+    /**
+     * The same plan, starting just past a position a previous scan reached.
+     *
+     * <p>A seek, not a skip: the position becomes a predicate on the clustered key, so the store
+     * never reads the rows already dealt with. That is what makes resuming an interrupted rollback
+     * cost the remainder rather than the whole job again.
+     */
+    public ScanPlan resumeAfter(@Nullable CursorPosition position) {
+        return new ScanPlan(worldId, ranges, box, fromMillis, toMillis, actorIds, order, batchSize, position);
     }
 
     /** True when {@code actorId} passes this plan's actor filter. */
