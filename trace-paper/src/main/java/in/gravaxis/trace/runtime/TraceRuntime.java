@@ -24,6 +24,7 @@ import in.gravaxis.trace.rollback.RollbackService;
 import in.gravaxis.trace.storage.EventStore;
 import in.gravaxis.trace.storage.GapRecord;
 import in.gravaxis.trace.storage.RecordBatch;
+import in.gravaxis.trace.storage.RollbackOperation;
 import in.gravaxis.trace.storage.StoreException;
 import in.gravaxis.trace.storage.StoreStats;
 import in.gravaxis.trace.storage.sqlite.SqliteEventStore;
@@ -33,6 +34,7 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
@@ -120,6 +122,11 @@ public final class TraceRuntime implements AutoCloseable {
         ActorDictionary actors = ActorDictionary.load(directory);
         Bukkit.getWorlds().forEach(worlds::register);
 
+        // Identifies this process in the operation records it writes. An operation still marked
+        // running with a different run id is one a crash interrupted; one with this run id may
+        // simply still be going, and must not be resumed underneath itself.
+        String runId = UUID.randomUUID().toString();
+
         EventStore store = SqliteEventStore.open(directory.resolve("storage"));
         // Opened above whatever the store has already applied. Below it, every frame this run wrote
         // would be discarded as a replay of something older — which is how a previous build lost a
@@ -131,6 +138,22 @@ public final class TraceRuntime implements AutoCloseable {
                     + floor + "; refusing to start rather than discard everything this run captures");
         }
         RecoveryReport recovery = recover(logger, journalDirectory, ringDirectory, store, journal);
+
+        // Read before the consumer thread starts, while the store still has one user. An operation
+        // left running by the last process is a world that is neither the old one nor the new one,
+        // and saying nothing about it is the one unacceptable option.
+        List<RollbackOperation> unfinished = store.unfinishedOperations();
+        for (RollbackOperation operation : unfinished) {
+            logger.warn(
+                    "Rollback {} from the last run is unfinished ({}): applied {} of the positions it reached,"
+                            + " scanned {} rows. Run /trace resume {} to continue it.",
+                    operation.id(),
+                    operation.state(),
+                    operation.progress().applied(),
+                    operation.progress().scanned(),
+                    operation.id());
+        }
+
         CaptureService capture = new CaptureService(ringDirectory, RING_CAPACITY_RECORDS);
         StoreConsumer consumer =
                 new StoreConsumer(capture, journal, store, logger, FORCE_INTERVAL_MILLIS, SEAL_INTERVAL_MILLIS);
@@ -138,7 +161,7 @@ public final class TraceRuntime implements AutoCloseable {
         consumerThread.setDaemon(true);
         consumerThread.start();
 
-        RollbackService rollback = new RollbackService(plugin, store, consumer, capture, worlds, states);
+        RollbackService rollback = new RollbackService(plugin, store, consumer, capture, worlds, states, runId);
         TraceRuntime runtime = new TraceRuntime(
                 plugin,
                 logger,
@@ -358,6 +381,17 @@ public final class TraceRuntime implements AutoCloseable {
                         stats.gapCount()));
         lines.add("dictionaries: %d worlds, %d block states, %d actors"
                 .formatted(worlds.size(), states.size(), actors.size()));
+        for (RollbackOperation operation : store.unfinishedOperations()) {
+            // Never silently: an operation that is not finished means a region of the world is part
+            // way between two states, and an operator who is not told cannot act on it.
+            lines.add("rollback %d unfinished (%s): %d positions restored so far, %d rows read. /trace resume %d"
+                    .formatted(
+                            operation.id(),
+                            operation.state(),
+                            operation.progress().applied(),
+                            operation.progress().scanned(),
+                            operation.id()));
+        }
         if (consumer.storeFailures() > 0) {
             lines.add("errors: %d storage failures since start — check the server log"
                     .formatted(consumer.storeFailures()));

@@ -17,19 +17,28 @@ import in.gravaxis.trace.dictionary.ActorDictionary;
 import in.gravaxis.trace.dictionary.BlockStateDictionary;
 import in.gravaxis.trace.dictionary.WorldDictionary;
 import in.gravaxis.trace.pipeline.StoreConsumer;
+import in.gravaxis.trace.storage.CursorPosition;
 import in.gravaxis.trace.storage.EventStore;
 import in.gravaxis.trace.storage.GapRecord;
 import in.gravaxis.trace.storage.MutationBatch;
 import in.gravaxis.trace.storage.MutationCursor;
+import in.gravaxis.trace.storage.OperationProgress;
+import in.gravaxis.trace.storage.OperationState;
+import in.gravaxis.trace.storage.RollbackOperation;
 import in.gravaxis.trace.storage.ScanPlan;
 import in.gravaxis.trace.storage.StoreException;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Puts the world back, one chunk at a time, without ever holding the whole job in memory.
@@ -48,6 +57,19 @@ import org.bukkit.plugin.Plugin;
  *   <li>and every write Trace makes is itself captured, with Trace as the actor, so the rollback
  *       can be undone in turn.
  * </ul>
+ *
+ * <p>Every rollback is a durable operation. It is recorded before the first block is touched, it
+ * checkpoints the position it has reached at each chunk boundary, and it is marked finished only
+ * when it really is. A run cut off by a crash therefore leaves a row that says what it was doing and
+ * how far it got, and {@link #resume(long)} continues from exactly there — reading only the
+ * remainder, because the stored position is a seek into the clustered key, not a count of rows to
+ * skip.
+ *
+ * <p>Resuming is safe to do twice. The apply step verifies every block before it writes, so a
+ * position already restored is counted as already-there and left alone. What makes that true across
+ * runs is that the operation's time window is stored rather than recomputed: a rollback records its
+ * own writes, and a resumed run working out a fresh window would take those in and start undoing
+ * itself.
  */
 public final class RollbackService {
 
@@ -62,19 +84,40 @@ public final class RollbackService {
     private final WorldDictionary worlds;
     private final BlockStateDictionary states;
 
+    /** This process. An operation stamped with it may still be running, so it is not resumable. */
+    private final String runId;
+
+    /** Operations this process is running right now, so a resume cannot race one. */
+    private final Set<Long> running = ConcurrentHashMap.newKeySet();
+
+    /** Operations someone has asked to stop. Per operation, never a single shared flag. */
+    private final Set<Long> cancelled = ConcurrentHashMap.newKeySet();
+
     public RollbackService(
             Plugin plugin,
             EventStore store,
             StoreConsumer consumer,
             CaptureService capture,
             WorldDictionary worlds,
-            BlockStateDictionary states) {
+            BlockStateDictionary states,
+            String runId) {
         this.plugin = plugin;
         this.store = store;
         this.consumer = consumer;
         this.capture = capture;
         this.worlds = worlds;
         this.states = states;
+        this.runId = runId;
+    }
+
+    /** Asks an operation to stop at its next chunk boundary. */
+    public void cancel(long operationId) {
+        cancelled.add(operationId);
+    }
+
+    /** Operations that may still have work left, for the startup report and for {@code /trace}. */
+    public List<RollbackOperation> unfinished() throws StoreException {
+        return store.unfinishedOperations();
     }
 
     /**
@@ -83,53 +126,163 @@ public final class RollbackService {
      * <p>Blocking, and must not be called from a tick thread: it waits for storage and for region
      * tasks. The caller runs it on the async scheduler.
      */
-    public RollbackSummary rollback(World world, BlockBox box, long fromMillis, long toMillis) throws StoreException {
+    public RollbackSummary rollback(World world, BlockBox box, long fromMillis, long toMillis, int actorId)
+            throws StoreException {
         int worldId = worlds.idOf(world);
         if (worldId < 0) {
             return RollbackSummary.refused("Trace has no history for the world " + world.getName());
         }
 
-        // Rows must stop moving before they are planned over: sealing first is also what makes an
-        // interrupted rollback resumable later.
+        // Rows must stop moving before they are planned over: sealing first is also what lets an
+        // interrupted run resume against the same rows it was reading.
         consumer.flushAndSeal(FLUSH_TIMEOUT_MILLIS);
 
-        List<GapRecord> gaps = store.gapsBetween(fromMillis, toMillis);
-        if (!gaps.isEmpty()) {
-            GapRecord first = gaps.get(0);
-            return RollbackSummary.refused(
-                    "Events were lost between " + first.fromMillis() + " and " + first.toMillis() + " ("
-                            + first.reason() + "). Rolling back across a gap would produce a world that never"
-                            + " existed, so Trace will not do it.");
+        RollbackSummary refusal = refusalForGaps(fromMillis, toMillis);
+        if (refusal != null) {
+            return refusal;
         }
 
-        ScanPlan plan = ScanPlan.of(worldId, box, fromMillis, toMillis, ScanPlan.Order.NEWEST_FIRST)
-                .withBatchSize(BATCH_SIZE);
+        RollbackOperation operation = RollbackOperation.starting(
+                runId, worldId, box, fromMillis, toMillis, actorId, System.currentTimeMillis());
+        long id = store.beginOperation(operation);
+        return run(world, operation.withId(id), OperationProgress.NOTHING);
+    }
+
+    /**
+     * Continues an operation a previous run did not finish.
+     *
+     * <p>Refuses rather than guesses in every case where continuing could be wrong: an operation
+     * that is already finished, one this process is running right now, one stamped with this run's
+     * id (which means the process that owns it is this one, so it may still be working), or one
+     * whose world is no longer loaded.
+     */
+    public RollbackSummary resume(long operationId) throws StoreException {
+        RollbackOperation operation = store.operation(operationId);
+        if (operation == null) {
+            return RollbackSummary.refused("There is no rollback with id " + operationId);
+        }
+        if (!operation.state().isResumable()) {
+            return RollbackSummary.refused("Rollback " + operationId + " already finished (" + operation.state() + ")");
+        }
+        if (!operation.isResumable(runId)) {
+            return RollbackSummary.refused(
+                    "Rollback " + operationId + " belongs to this run of the server and may still be going");
+        }
+        World world = worlds.worldOf(operation.worldId());
+        if (world == null) {
+            return RollbackSummary.refused(
+                    "Rollback " + operationId + " is for a world this server does not have loaded");
+        }
+
+        consumer.flushAndSeal(FLUSH_TIMEOUT_MILLIS);
+        RollbackSummary refusal = refusalForGaps(operation.fromMillis(), operation.toMillis());
+        if (refusal != null) {
+            return refusal;
+        }
+        return run(world, operation, operation.progress());
+    }
+
+    private @Nullable RollbackSummary refusalForGaps(long fromMillis, long toMillis) throws StoreException {
+        List<GapRecord> gaps = store.gapsBetween(fromMillis, toMillis);
+        if (gaps.isEmpty()) {
+            return null;
+        }
+        GapRecord first = gaps.get(0);
+        return RollbackSummary.refused(
+                "Events were lost between " + first.fromMillis() + " and " + first.toMillis() + " ("
+                        + first.reason() + "). Rolling back across a gap would produce a world that never"
+                        + " existed, so Trace will not do it.");
+    }
+
+    /**
+     * Streams the operation's remaining rows and applies them, checkpointing at chunk boundaries.
+     *
+     * <p>The cursor advances only over chunks that were fully applied. As soon as one chunk cannot
+     * be applied — a region too busy to accept the task in time — the cursor stops advancing for the
+     * rest of the run, even though later chunks are still attempted. Letting it advance past a
+     * contended chunk would fence those rows out of every future resume, and the positions in them
+     * would never be restored and never be reported.
+     */
+    private RollbackSummary run(World world, RollbackOperation operation, OperationProgress carried)
+            throws StoreException {
+        long id = operation.id();
+        if (!running.add(id)) {
+            return RollbackSummary.refused("Rollback " + id + " is already running");
+        }
+        cancelled.remove(id);
+
+        ScanPlan plan = ScanPlan.of(
+                        operation.worldId(),
+                        operation.box(),
+                        operation.fromMillis(),
+                        operation.toMillis(),
+                        ScanPlan.Order.NEWEST_FIRST)
+                .withBatchSize(BATCH_SIZE)
+                .resumeAfter(operation.cursor());
 
         ChunkFold fold = new ChunkFold();
         RollbackSummary.Builder summary = RollbackSummary.builder();
         MutationBatch batch = new MutationBatch(BATCH_SIZE);
+        OperationState finalState = OperationState.DONE;
 
         try (MutationCursor cursor = store.scan(plan)) {
             long currentChunk = Long.MIN_VALUE;
             boolean any = false;
-            while (cursor.next(batch)) {
+            boolean stopped = false;
+            CursorPosition lastRow = null;
+            CursorPosition chunkEnd = null;
+
+            while (!stopped && cursor.next(batch)) {
                 for (int i = 0; i < batch.size(); i++) {
-                    summary.scanned();
                     long chunkKey = batch.chunkKey(i);
                     if (any && chunkKey != currentChunk) {
                         applyChunk(world, currentChunk, fold, summary);
                         fold.clear();
+                        chunkEnd = lastRow;
+                        checkpoint(id, chunkEnd, carried, summary);
+                        if (cancelled.contains(id)) {
+                            finalState = OperationState.CANCELLED;
+                            stopped = true;
+                            break;
+                        }
                     }
+                    summary.scanned();
                     currentChunk = chunkKey;
                     any = true;
+                    lastRow = new CursorPosition(chunkKey, batch.timestamp(i), batch.sequence(i));
                     fold.accept(batch.x(i), batch.y(i), batch.z(i), batch.afterState(i), batch.beforeState(i));
                 }
             }
-            if (any) {
+            if (any && !stopped) {
                 applyChunk(world, currentChunk, fold, summary);
+                chunkEnd = lastRow;
+                checkpoint(id, chunkEnd, carried, summary);
             }
+            if (finalState == OperationState.DONE && summary.contendedCount() > 0) {
+                finalState = OperationState.PARTIAL;
+            }
+        } catch (StoreException | RuntimeException e) {
+            store.finishOperation(id, OperationState.FAILED, carried.plus(summary.progress()));
+            running.remove(id);
+            throw e;
         }
-        return summary.build();
+
+        store.finishOperation(id, finalState, carried.plus(summary.progress()));
+        running.remove(id);
+        return summary.build(id, finalState, carried);
+    }
+
+    /**
+     * Durably records how far this run has got.
+     *
+     * <p>A null position means "counters only": the run has work it cannot promise is finished, so
+     * the stored position stays where it was and a later resume redoes from there.
+     */
+    private void checkpoint(
+            long id, @Nullable CursorPosition position, OperationProgress carried, RollbackSummary.Builder summary)
+            throws StoreException {
+        CursorPosition safe = summary.contendedCount() > 0 ? null : position;
+        store.checkpointOperation(id, safe, carried.plus(summary.progress()));
     }
 
     private void applyChunk(World world, long chunkKey, ChunkFold fold, RollbackSummary.Builder summary) {
@@ -193,8 +346,16 @@ public final class RollbackService {
         try {
             applied.get(CHUNK_APPLY_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
             summary.chunk();
-        } catch (Exception e) {
-            throw new IllegalStateException("Applying chunk " + chunkX + "," + chunkZ + " failed", e);
+        } catch (TimeoutException e) {
+            // The region never ran the task. That is a chunk left undone, not a broken rollback:
+            // it is counted, the operation ends PARTIAL rather than DONE, and the checkpoint stops
+            // advancing so a resume comes back for it.
+            summary.contended();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted applying chunk " + chunkX + "," + chunkZ, e);
+        } catch (ExecutionException e) {
+            throw new IllegalStateException("Applying chunk " + chunkX + "," + chunkZ + " failed", e.getCause());
         }
     }
 

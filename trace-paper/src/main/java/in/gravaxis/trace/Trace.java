@@ -11,8 +11,10 @@ package in.gravaxis.trace;
 import in.gravaxis.trace.api.TraceApi;
 import in.gravaxis.trace.command.TraceCommand;
 import in.gravaxis.trace.core.geom.BlockBox;
+import in.gravaxis.trace.dictionary.ActorDictionary;
 import in.gravaxis.trace.rollback.RollbackSummary;
 import in.gravaxis.trace.runtime.TraceRuntime;
+import in.gravaxis.trace.storage.RollbackOperation;
 import io.papermc.paper.ServerBuildInfo;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.kyori.adventure.key.Key;
@@ -132,10 +134,61 @@ public final class Trace extends JavaPlugin implements TraceApi {
                             world,
                             BlockBox.around(x, y, z, radius),
                             System.currentTimeMillis() - sinceMillis,
-                            System.currentTimeMillis() + 1);
+                            System.currentTimeMillis() + 1,
+                            ActorDictionary.HARNESS);
             return summary.describe();
         } catch (Exception e) {
             getSLF4JLogger().error("Rollback failed", e);
+            return "failed: " + e;
+        }
+    }
+
+    /**
+     * Continues a rollback a previous run did not finish, and returns a one-line summary.
+     *
+     * <p>The same seam as {@link #runRollback}, for the same reason. Blocking.
+     */
+    @ApiStatus.Internal
+    public String resumeRollback(long operationId) {
+        TraceRuntime current = runtime;
+        if (current == null) {
+            return "refused: Trace is not running";
+        }
+        try {
+            return current.rollback().resume(operationId).describe();
+        } catch (Exception e) {
+            getSLF4JLogger().error("Resuming rollback {} failed", operationId, e);
+            return "failed: " + e;
+        }
+    }
+
+    /**
+     * One line per rollback that still has work left: {@code id state applied scanned}.
+     *
+     * <p>A seam for the harness, and the shape {@code /trace status} reports.
+     */
+    @ApiStatus.Internal
+    public String unfinishedRollbacks() {
+        TraceRuntime current = runtime;
+        if (current == null) {
+            return "unavailable";
+        }
+        try {
+            StringBuilder out = new StringBuilder();
+            for (RollbackOperation operation : current.rollback().unfinished()) {
+                if (!out.isEmpty()) {
+                    out.append('\n');
+                }
+                out.append("id=%d state=%s applied=%d scanned=%d"
+                        .formatted(
+                                operation.id(),
+                                operation.state(),
+                                operation.progress().applied(),
+                                operation.progress().scanned()));
+            }
+            return out.toString();
+        } catch (Exception e) {
+            getSLF4JLogger().error("Could not list rollbacks", e);
             return "failed: " + e;
         }
     }

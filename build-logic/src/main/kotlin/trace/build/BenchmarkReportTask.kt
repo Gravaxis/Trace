@@ -226,7 +226,7 @@ abstract class BenchmarkReportTask : DefaultTask() {
                 server = listOfNotNull(details["server.brand"], details["server.minecraftVersion"])
                     .joinToString(" ")
                     .ifBlank { "?" },
-                params = params.entries.joinToString(", ") { "${it.key}=${it.value}" }.ifBlank { "—" },
+                params = params.entries.joinToString(", ") { "${it.key}=${it.value}" }.ifBlank { "none" },
                 metrics = metrics,
             )
         }
@@ -237,7 +237,7 @@ abstract class BenchmarkReportTask : DefaultTask() {
         out.append("|---|---|---|").append(metricNames.joinToString("") { "---|" }).append("\n")
         rows.forEach { row ->
             out.append("| `${row.scenario}` | ${row.server} | ${row.params} | ")
-            out.append(metricNames.joinToString(" | ") { row.metrics[it] ?: "—" })
+            out.append(metricNames.joinToString(" | ") { row.metrics[it] ?: "not measured" })
             out.append(" |\n")
         }
 
@@ -299,7 +299,7 @@ abstract class BenchmarkReportTask : DefaultTask() {
     }
 
     private fun formatMetric(metric: Map<String, Any?>): String {
-        val value = Json.asDouble(metric["value"]) ?: return "—"
+        val value = Json.asDouble(metric["value"]) ?: return "not measured"
         return when (metric["unit"] as? String) {
             "bytes" -> "%.1f MiB".format(value / (1024 * 1024))
             "ms" -> "%.2f ms".format(value)

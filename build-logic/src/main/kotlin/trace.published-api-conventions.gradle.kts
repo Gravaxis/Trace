@@ -23,7 +23,7 @@ extensions.configure<MavenPublishBaseExtension> {
   pom {
     name.set(project.name)
     description.set("Public API for Trace, a block logging and rollback plugin for Paper servers.")
-    url.set("https://github.com/gravaxis/trace")
+    url.set("https://github.com/Gravaxis/Trace")
     inceptionYear.set("2026")
     licenses {
       license {
@@ -40,9 +40,9 @@ extensions.configure<MavenPublishBaseExtension> {
       }
     }
     scm {
-      url.set("https://github.com/gravaxis/trace")
-      connection.set("scm:git:https://github.com/gravaxis/trace.git")
-      developerConnection.set("scm:git:ssh://git@github.com/gravaxis/trace.git")
+      url.set("https://github.com/Gravaxis/Trace")
+      connection.set("scm:git:https://github.com/Gravaxis/Trace.git")
+      developerConnection.set("scm:git:ssh://git@github.com/Gravaxis/Trace.git")
     }
   }
 }

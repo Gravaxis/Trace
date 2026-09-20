@@ -68,6 +68,23 @@ public record RollbackOperation(
                 nowMillis);
     }
 
+    /** The same operation, with the id the store assigned it. */
+    public RollbackOperation withId(long assignedId) {
+        return new RollbackOperation(
+                assignedId,
+                runId,
+                worldId,
+                box,
+                fromMillis,
+                toMillis,
+                actorId,
+                state,
+                cursor,
+                progress,
+                startedAtMillis,
+                updatedAtMillis);
+    }
+
     /** True when this operation has work left and nothing is known to be running it. */
     public boolean isResumable(String currentRunId) {
         return state.isResumable() && !runId.equals(currentRunId);

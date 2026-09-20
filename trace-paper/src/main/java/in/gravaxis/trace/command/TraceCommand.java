@@ -9,10 +9,12 @@
 package in.gravaxis.trace.command;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import in.gravaxis.trace.Trace;
 import in.gravaxis.trace.core.geom.BlockBox;
+import in.gravaxis.trace.dictionary.ActorDictionary;
 import in.gravaxis.trace.rollback.RollbackSummary;
 import in.gravaxis.trace.runtime.TraceRuntime;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -23,6 +25,8 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The command surface: everything under {@code /trace}, the way {@code /co} works, so that muscle
@@ -44,10 +48,12 @@ public final class TraceCommand {
                 .requires(source -> source.getSender().hasPermission("trace.status"))
                 .then(status(plugin))
                 .then(rollback(plugin))
+                .then(resume(plugin))
                 .executes(context -> {
                     context.getSource()
                             .getSender()
-                            .sendMessage(Component.text("Usage: /trace status | /trace rollback <radius> <seconds>")
+                            .sendMessage(Component.text(
+                                            "Usage: /trace status | /trace rollback <radius> <seconds> | /trace resume <id>")
                                     .color(NamedTextColor.GRAY));
                     return 1;
                 })
@@ -96,6 +102,45 @@ public final class TraceCommand {
                 .executes(context -> runRollback(plugin, context.getSource(), DEFAULT_RADIUS, DEFAULT_SECONDS));
     }
 
+    private static LiteralArgumentBuilder<CommandSourceStack> resume(Trace plugin) {
+        return Commands.literal("resume")
+                // Same restriction as a rollback, because it is one: it finishes a job that was
+                // already changing the world.
+                .requires(Commands.restricted(source -> source.getSender().hasPermission("trace.rollback.blocks")))
+                .then(Commands.argument("id", LongArgumentType.longArg(1))
+                        .executes(context ->
+                                runResume(plugin, context.getSource(), LongArgumentType.getLong(context, "id"))));
+    }
+
+    private static int runResume(Trace plugin, CommandSourceStack source, long operationId) {
+        TraceRuntime runtime = plugin.runtime();
+        if (runtime == null) {
+            source.getSender()
+                    .sendMessage(Component.text("Trace is not running.").color(NamedTextColor.RED));
+            return 0;
+        }
+        source.getSender()
+                .sendMessage(Component.text("Continuing rollback " + operationId + "...")
+                        .color(NamedTextColor.GRAY));
+        Bukkit.getAsyncScheduler().runNow(plugin, task -> {
+            String line;
+            try {
+                line = runtime.rollback().resume(operationId).describe();
+            } catch (Exception e) {
+                plugin.getSLF4JLogger().error("Resuming rollback {} failed", operationId, e);
+                line = "failed: " + e.getMessage();
+            }
+            String message = line;
+            source.getSender()
+                    .sendMessage(Component.text(message)
+                            .color(
+                                    message.startsWith("refused") || message.startsWith("failed")
+                                            ? NamedTextColor.YELLOW
+                                            : NamedTextColor.GREEN));
+        });
+        return 1;
+    }
+
     private static int runRollback(Trace plugin, CommandSourceStack source, int radius, int seconds) {
         TraceRuntime runtime = plugin.runtime();
         if (runtime == null) {
@@ -122,7 +167,8 @@ public final class TraceCommand {
                                 BlockBox.around(
                                         location.getBlockX(), location.getBlockY(), location.getBlockZ(), radius),
                                 since,
-                                System.currentTimeMillis() + 1);
+                                System.currentTimeMillis() + 1,
+                                actorOf(runtime, executor));
             } catch (Exception e) {
                 plugin.getSLF4JLogger().error("Rollback failed", e);
                 source.getSender()
@@ -136,5 +182,15 @@ public final class TraceCommand {
             message.forEach(source.getSender()::sendMessage);
         });
         return 1;
+    }
+
+    /**
+     * Who asked. The console is not a player, and history says so rather than blaming someone.
+     */
+    private static int actorOf(TraceRuntime runtime, @Nullable Entity executor) {
+        if (executor instanceof Player player) {
+            return runtime.actors().idOf(player.getUniqueId());
+        }
+        return ActorDictionary.UNKNOWN;
     }
 }
