@@ -99,3 +99,8 @@ Tracked in the ADRs rather than here, but the ones that shape upcoming work:
   storage-density number is published.
 * **M9** — the CoreProtect compatibility bridge needs classes in the `net.coreprotect` package, and
   parts of that API's wire format are undocumented. Scope and legal review pending.
+* **Positioning** — the owner has identified Oasis and supplied an analysis
+  ([`docs/competitive/oasis.md`](docs/competitive/oasis.md)). Its performance figures are the
+  competitor's own unverifiable claims and stay out of every public surface. Two owner decisions
+  come with it: the README's URL, and whether the AGPL question it raises reopens ADR-0006 (default:
+  no).

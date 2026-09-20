@@ -62,8 +62,12 @@ notes, including the anti-AI-usage clause. See ADR-0004.
 * **LogBlock, Prism, Spyglass, NoriTrace, MineTracer and other current loggers** — listing pages and
   READMEs only.
 * **"Oasis"**, named in the build brief as the closed-source ClickHouse competitor, **could not be
-  found**: no Modrinth, Hangar, Polymart or web listing matches. Nothing about it is repeated in
-  Trace's documentation until the owner supplies a link.
+  found** by search on 2026-09-19: no Modrinth, Hangar, Polymart or web listing matched. On
+  2026-09-20 the owner supplied an analysis written from Oasis's public README, kept verbatim in
+  [`docs/competitive/oasis.md`](../competitive/oasis.md). **The README's URL is still missing**, so
+  this remains a summary rather than a cited primary source, and every performance figure in it is
+  a claim Oasis makes about itself which their own documentation says is not reproducible from
+  their repository. None of those figures may be published or compared against a Trace measurement.
 
 ### Name and command collision check (2026-09-19)
 
