@@ -7,7 +7,7 @@ and an unmet item is reported as unmet rather than carried quietly.
 |---|---|---|
 | M0 | Skeleton: modules, build, licences, a plugin that loads on Paper and Folia | **done** |
 | M1 | Benchmark and crash harness — built *before* any feature | **done** |
-| M2 | Walking skeleton: one event type captured with zero allocation, journalled, sealed into a shard, queried back, rolled back | next |
+| M2 | Walking skeleton: one event type captured with zero allocation, journalled, sealed into a shard, queried back, rolled back | **partly done** |
 | M3 | Storage engine: sharding, sealing, compaction, manifest, dictionaries, blobs, retention, purge, verify, quarantine | planned |
 | M4 | Full capture: every kind and cause, block entities, entities, containers, sessions | planned |
 | M5 | Mass edits: WorldEdit and FAWE hooks, section-diff patches, densification | planned |
@@ -48,6 +48,39 @@ Post-1.0: the web log browser, PostgreSQL and ClickHouse tiers, further importer
   in M2.
 * Tick percentiles from `ServerTickEndEvent` and post-GC heap sampling, because TPS is clamped at 20
   and peak heap without a collection is not a measurement.
+
+## What M2 has delivered, and what it has not
+
+Two of the four definition-of-done items pass. The other two do not, and M3 does not start until
+they do.
+
+**Passing.**
+
+* Block breaks and places are captured at `MONITOR`, staged per thread, and confirmed against the
+  world at `ServerTickEndEvent` — so an event that changed nothing is never written
+  ([ADR-0014](docs/decisions/0014-log-changes-not-attempts.md)). The reported CoreProtect
+  lava-punch case is a scenario assertion: five break events at a block that does not break produce
+  five rejections and no history.
+* Capture → ring → journal → hot window → sealed shard → keyset scan → rollback runs end to end.
+  `./gradlew :trace-test-harness:integrationPaper` and `:integrationFolia` both pass, with the same
+  numbers on each: 46 events seen, 36 recorded, 10 rejected as no-ops, 36 scanned back, 35 applied,
+  1 skipped because someone had changed that block afterwards, across 2 chunks.
+* The Folia run genuinely spans two regions: the areas are 128 chunks apart, which is past the
+  boundary measured by asking the server's own `isOwnedByCurrentRegion` (see `provenance.md`). A
+  rollback's writes are themselves captured, so a rollback can be rolled back.
+* Gate P1 is green.
+
+**Not passing, and why it is listed here rather than quietly deferred.**
+
+* **The allocation gate does not yet measure the capture path.** It measures a probe. Until it
+  points at the real encoder, "zero allocation on the tick thread" is a design claim, not a measured
+  one, and it is not written anywhere it could be read as measured.
+* **The crash rig does not yet shoot at Trace's journal.** It kills a server that is appending to
+  its own forced log and verifies that, which proves the rig works, not that Trace's recovery does.
+  The M2 requirement — every event lost to `kill -9` falls inside a recorded gap — is therefore
+  untested.
+* **An interrupted rollback does not resume.** There is no operation record and no resume cursor
+  yet; a rollback that is cut off leaves the world half-restored with nothing to continue from.
 
 ## Open questions carried forward
 

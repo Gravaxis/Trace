@@ -9,18 +9,26 @@
 package in.gravaxis.trace;
 
 import in.gravaxis.trace.api.TraceApi;
+import in.gravaxis.trace.command.TraceCommand;
+import in.gravaxis.trace.core.geom.BlockBox;
+import in.gravaxis.trace.rollback.RollbackSummary;
+import in.gravaxis.trace.runtime.TraceRuntime;
 import io.papermc.paper.ServerBuildInfo;
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.kyori.adventure.key.Key;
 import org.bukkit.Bukkit;
+import org.bukkit.World;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.ApiStatus;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Plugin entry point.
  *
- * <p>M0 deliberately does nothing but come up, identify the platform it is running on, and publish
- * the service registration that consumers will later look up. Capture, storage and rollback arrive
- * in M2, after the benchmark and crash harness exists to measure them.
+ * <p>Brings up the runtime — store, journal, rings, consumer — and registers the capture listener
+ * and the command surface. Everything of substance lives in {@link TraceRuntime}; this class is the
+ * part Bukkit knows about.
  */
 public final class Trace extends JavaPlugin implements TraceApi {
 
@@ -30,11 +38,34 @@ public final class Trace extends JavaPlugin implements TraceApi {
     private static final Key FOLIA_BRAND = Key.key("papermc", "folia");
 
     private boolean regionised;
+    private @Nullable TraceRuntime runtime;
 
     @Override
     public void onEnable() {
         ServerBuildInfo build = ServerBuildInfo.buildInfo();
         this.regionised = build.isBrandCompatible(FOLIA_BRAND);
+
+        try {
+            this.runtime =
+                    TraceRuntime.start(this, getSLF4JLogger(), getDataFolder().toPath());
+        } catch (Exception e) {
+            // A logger that half-works is worse than one that is plainly off: an operator who
+            // thinks they have history and does not is the person this plugin exists to protect.
+            getSLF4JLogger().error("Trace could not start and will not capture anything", e);
+            Bukkit.getPluginManager().disablePlugin(this);
+            return;
+        }
+
+        // Registered here rather than in a bootstrapper: handlers registered during enable run
+        // after every plugin has enabled, which is what keeps the bare /trace label (ADR-0002).
+        getLifecycleManager()
+                .registerEventHandler(
+                        LifecycleEvents.COMMANDS,
+                        event -> event.registrar()
+                                .register(
+                                        TraceCommand.build(this),
+                                        "Block history and rollback",
+                                        java.util.List.of("tr")));
 
         getSLF4JLogger()
                 .info(
@@ -51,6 +82,10 @@ public final class Trace extends JavaPlugin implements TraceApi {
     @Override
     public void onDisable() {
         Bukkit.getServicesManager().unregisterAll(this);
+        if (runtime != null) {
+            runtime.close();
+            runtime = null;
+        }
     }
 
     @Override
@@ -62,12 +97,77 @@ public final class Trace extends JavaPlugin implements TraceApi {
      * Whether the server ticks regions on several threads (Folia) rather than one main thread.
      *
      * <p>Trace schedules through the region, entity, async and global-region schedulers either way;
-     * this is used for reporting and for sizing, never to pick a different code path for world
-     * access.
-     *
-     * @return true on a Folia-compatible server
+     * this is used for reporting, never to pick a different code path for world access.
      */
     public boolean isRegionised() {
         return regionised;
+    }
+
+    /** The running runtime, or null if Trace failed to start. */
+    public @Nullable TraceRuntime runtime() {
+        return runtime;
+    }
+
+    /**
+     * Runs a rollback and returns a one-line summary.
+     *
+     * <p>A seam for the integration harness, which cannot depend on this module and drives Trace
+     * reflectively. The command in {@link TraceCommand} is the real entry point, and the published
+     * API takes this over in the milestone that designs it. Blocking: never call it from a tick
+     * thread.
+     */
+    @ApiStatus.Internal
+    public String runRollback(String worldName, int x, int y, int z, int radius, long sinceMillis) {
+        TraceRuntime current = runtime;
+        if (current == null) {
+            return "refused: Trace is not running";
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return "refused: no world named " + worldName;
+        }
+        try {
+            RollbackSummary summary = current.rollback()
+                    .rollback(
+                            world,
+                            BlockBox.around(x, y, z, radius),
+                            System.currentTimeMillis() - sinceMillis,
+                            System.currentTimeMillis() + 1);
+            return summary.describe();
+        } catch (Exception e) {
+            getSLF4JLogger().error("Rollback failed", e);
+            return "failed: " + e;
+        }
+    }
+
+    /**
+     * Capture counters as one line, for the integration harness.
+     *
+     * <p>Same seam as {@link #runRollback}: the harness cannot depend on this module, and
+     * {@code /trace status} is the human-facing version of the same numbers.
+     */
+    @ApiStatus.Internal
+    public String captureCounters() {
+        TraceRuntime current = runtime;
+        if (current == null) {
+            return "unavailable";
+        }
+        return "captured=%d published=%d rejectedUnchanged=%d unconfirmed=%d dropped=%d outOfRange=%d stored=%d"
+                .formatted(
+                        current.capture().captured(),
+                        current.capture().published(),
+                        current.capture().rejectedUnchanged(),
+                        current.capture().unconfirmed(),
+                        current.capture().dropped(),
+                        current.capture().outOfRange(),
+                        current.consumer().recordsStored());
+    }
+
+    /** Ensures a world loaded after startup has an id before anything in it is captured. */
+    public void registerWorld(World world) {
+        TraceRuntime current = runtime;
+        if (current != null) {
+            current.registerWorld(world);
+        }
     }
 }

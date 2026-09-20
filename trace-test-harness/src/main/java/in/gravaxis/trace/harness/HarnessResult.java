@@ -22,6 +22,10 @@ import org.jspecify.annotations.Nullable;
  */
 public final class HarnessResult {
 
+    // Every method that touches the collections is synchronized. A scenario that spans two regions
+    // reports from two region threads at once, and a harness that drops one of those failures under
+    // a race would report a broken run as green — the one bug a test harness must not have.
+
     /** Outcome of a scenario run. */
     public enum Status {
         /** Every assertion held. */
@@ -52,19 +56,19 @@ public final class HarnessResult {
     }
 
     /** Records a fact about the run. Facts are reported whether the scenario passes or fails. */
-    public HarnessResult detail(String key, Object value) {
+    public synchronized HarnessResult detail(String key, Object value) {
         details.put(key, String.valueOf(value));
         return this;
     }
 
     /** Records a measurement. Only measurements recorded here can ever reach the README. */
-    public HarnessResult metric(String name, double value, @Nullable String unit) {
+    public synchronized HarnessResult metric(String name, double value, @Nullable String unit) {
         metrics.add(new Metric(name, value, unit));
         return this;
     }
 
     /** Records a failed assertion. Any failure makes the whole scenario fail. */
-    public HarnessResult failure(String message) {
+    public synchronized HarnessResult failure(String message) {
         failures.add(message);
         return this;
     }
@@ -74,14 +78,14 @@ public final class HarnessResult {
      *
      * @return this, so assertions chain
      */
-    public HarnessResult require(boolean condition, String message) {
+    public synchronized HarnessResult require(boolean condition, String message) {
         if (!condition) {
             failure(message);
         }
         return this;
     }
 
-    public Status status() {
+    public synchronized Status status() {
         return failures.isEmpty() ? Status.PASS : Status.FAIL;
     }
 
@@ -89,12 +93,12 @@ public final class HarnessResult {
         return scenario;
     }
 
-    public List<String> failures() {
+    public synchronized List<String> failures() {
         return List.copyOf(failures);
     }
 
     /** The result as JSON, which is what the Gradle tasks parse. */
-    public String toJson() {
+    public synchronized String toJson() {
         StringBuilder out = new StringBuilder(512);
         out.append("{\n  \"scenario\": ").append(quote(scenario));
         out.append(",\n  \"status\": ").append(quote(status().name()));

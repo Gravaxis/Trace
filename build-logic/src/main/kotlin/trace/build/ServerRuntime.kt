@@ -84,6 +84,10 @@ internal object ServerRuntime {
         dir.mkdirs()
         if (!keepWorld) {
             listOf("world", "world_nether", "world_the_end").forEach { dir.resolve(it).deleteRecursively() }
+            // A plugin's data directory is state like any other. Inheriting the last run's journal
+            // and history makes a scenario's counters depend on what happened yesterday, and it
+            // once turned a real durability bug into a puzzle about the wrong subsystem.
+            dir.resolve("plugins").listFiles { f -> f.isDirectory }?.forEach { it.deleteRecursively() }
         }
         dir.resolve("harness-result.json").delete()
         dir.resolve("eula.txt").writeText(

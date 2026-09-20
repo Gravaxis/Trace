@@ -100,6 +100,16 @@ fun registerScenario(
 val smokePaper = registerScenario("smokePaper", "paper", "boot", 25591)
 val smokeFolia = registerScenario("smokeFolia", "folia", "boot", 25592)
 
+// The M2 definition of done: capture, store, roll back, on both platforms.
+val integrationPaper = registerScenario("integrationPaper", "paper", "block-break-rollback", 25596)
+val integrationFolia = registerScenario("integrationFolia", "folia", "block-break-rollback", 25597)
+
+tasks.register("integrationTest") {
+  group = "verification"
+  description = "Breaks blocks, stores the history and rolls it back, on Paper and on Folia."
+  dependsOn(integrationPaper, integrationFolia)
+}
+
 tasks.register("smokeTest") {
   group = "verification"
   description = "Boots Trace on the pinned Paper and Folia builds and asserts it comes up."

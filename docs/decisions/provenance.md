@@ -79,6 +79,23 @@ Results and consequences: ADR-0002.
 Contributor Covenant 2.1, the SPDX `GPL-3.0-interface-exception` template, Sonatype Central Portal
 namespace-verification documentation, Hangar resource guidelines and Modrinth content rules.
 
+### Paper API shapes read from the pinned jar (2026-09-20)
+
+`javap` against `io.papermc.paper:paper-api:26.2.build.126-stable` in the Gradle cache, for
+`org.bukkit.event.block.BlockPlaceEvent` (constructor arity and argument order, used by the
+integration scenario's place path) and `org.bukkit.Bukkit#isOwnedByCurrentRegion` (overloads). The
+jar is the primary source; nothing here came from a tutorial or a memory of an older API.
+
+### Folia region boundary, measured (2026-09-20)
+
+The M2 integration scenario needs two areas that a regionised server owns separately, and the
+distance was measured rather than assumed. Running on Folia 26.2 build 7 with the generated default
+`threaded-regions.grid-exponent: 4`, a region task owning chunk 0,0 was asked
+`Bukkit.isOwnedByCurrentRegion(world, d, d)` for d in {8, 16, 24, 32, 40, 64, 128, 256, 512}:
+everything up to 64 answered "same region", everything from 128 answered "other region". The
+scenario uses 128 chunks. An earlier version used 40 and tested one region twice while claiming two.
+This is an observation of our own test server, reproducible by re-running the scenario.
+
 ## How to add to this file
 
 One row or bullet per source: what you read, where, and when. If a fact is load-bearing — a version
