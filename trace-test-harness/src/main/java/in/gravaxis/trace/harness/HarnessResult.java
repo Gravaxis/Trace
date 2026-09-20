@@ -37,7 +37,8 @@ public final class HarnessResult {
      * @param value the measured value
      * @param unit {@code ms}, {@code bytes}, {@code count}, or null for a bare number
      */
-    public record Metric(String name, double value, @Nullable String unit) {}
+    public record Metric(
+            String name, double value, @Nullable String unit) {}
 
     private final String scenario;
     private final Map<String, String> params;

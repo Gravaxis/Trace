@@ -145,7 +145,9 @@ public final class TraceHarness extends JavaPlugin {
         for (String pair : raw.split(",", -1)) {
             int equals = pair.indexOf('=');
             if (equals > 0) {
-                params.put(pair.substring(0, equals).trim(), pair.substring(equals + 1).trim());
+                params.put(
+                        pair.substring(0, equals).trim(),
+                        pair.substring(equals + 1).trim());
             }
         }
         return params;

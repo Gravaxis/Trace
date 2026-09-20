@@ -60,38 +60,54 @@ public final class BlockChurnScenario implements Scenario {
         AtomicInteger tick = new AtomicInteger();
         long[] startedAt = new long[1];
 
-        world.getChunkAtAsync(CHUNK_X, CHUNK_Z, true).thenAccept(chunk -> {
-            heapSampler.start();
-            tickRecorder.start(context.plugin());
-            startedAt[0] = System.nanoTime();
-            context.announceReady("block-churn");
+        world.getChunkAtAsync(CHUNK_X, CHUNK_Z, true)
+                .thenAccept(chunk -> {
+                    heapSampler.start();
+                    tickRecorder.start(context.plugin());
+                    startedAt[0] = System.nanoTime();
+                    context.announceReady("block-churn");
 
-            Bukkit.getRegionScheduler().runAtFixedRate(context.plugin(), world, CHUNK_X, CHUNK_Z, task -> {
-                int current = tick.getAndIncrement();
-                if (current >= ticks) {
-                    task.cancel();
-                    long elapsedNanos = System.nanoTime() - startedAt[0];
-                    tickRecorder.stop();
-                    heapSampler.stop();
-                    finish(result, tickRecorder, heapSampler, ticks, blocksPerTick, elapsedNanos);
+                    Bukkit.getRegionScheduler()
+                            .runAtFixedRate(
+                                    context.plugin(),
+                                    world,
+                                    CHUNK_X,
+                                    CHUNK_Z,
+                                    task -> {
+                                        int current = tick.getAndIncrement();
+                                        if (current >= ticks) {
+                                            task.cancel();
+                                            long elapsedNanos = System.nanoTime() - startedAt[0];
+                                            tickRecorder.stop();
+                                            heapSampler.stop();
+                                            finish(
+                                                    result,
+                                                    tickRecorder,
+                                                    heapSampler,
+                                                    ticks,
+                                                    blocksPerTick,
+                                                    elapsedNanos);
+                                            done.complete(null);
+                                            return;
+                                        }
+                                        Material material = (current & 1) == 0 ? Material.STONE : Material.AIR;
+                                        int baseX = CHUNK_X << 4;
+                                        int baseZ = CHUNK_Z << 4;
+                                        for (int i = 0; i < blocksPerTick; i++) {
+                                            int x = baseX + (i & 15);
+                                            int z = baseZ + ((i >> 4) & 15);
+                                            // applyPhysics = false: this is a throughput workload, not a redstone test.
+                                            world.getBlockAt(x, y, z).setType(material, false);
+                                        }
+                                    },
+                                    1L,
+                                    1L);
+                })
+                .exceptionally(t -> {
+                    result.failure("Could not load chunk " + CHUNK_X + "," + CHUNK_Z + ": " + t);
                     done.complete(null);
-                    return;
-                }
-                Material material = (current & 1) == 0 ? Material.STONE : Material.AIR;
-                int baseX = CHUNK_X << 4;
-                int baseZ = CHUNK_Z << 4;
-                for (int i = 0; i < blocksPerTick; i++) {
-                    int x = baseX + (i & 15);
-                    int z = baseZ + ((i >> 4) & 15);
-                    // applyPhysics = false: this is a throughput workload, not a redstone test.
-                    world.getBlockAt(x, y, z).setType(material, false);
-                }
-            }, 1L, 1L);
-        }).exceptionally(t -> {
-            result.failure("Could not load chunk " + CHUNK_X + "," + CHUNK_Z + ": " + t);
-            done.complete(null);
-            return null;
-        });
+                    return null;
+                });
 
         return done;
     }

@@ -68,8 +68,8 @@ public final class CrashVerifyScenario implements Scenario {
                 break;
             }
             if (sequence != expected) {
-                result.failure("Sequence gap: expected " + expected + " but found " + sequence
-                        + " at record " + i + ". Forced records must never disappear from the middle.");
+                result.failure("Sequence gap: expected " + expected + " but found " + sequence + " at record " + i
+                        + ". Forced records must never disappear from the middle.");
                 break;
             }
             crc.reset();

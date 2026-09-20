@@ -54,10 +54,7 @@ public final class CrashWriteScenario implements Scenario {
         Bukkit.getAsyncScheduler().runNow(context.plugin(), task -> {
             long written = 0;
             try (FileChannel channel = FileChannel.open(
-                    file,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.WRITE,
-                    StandardOpenOption.TRUNCATE_EXISTING)) {
+                    file, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
                 ByteBuffer buffer = ByteBuffer.allocateDirect(RECORD_BYTES);
                 CRC32 crc = new CRC32();
                 long nanosPerRecord = TimeUnit.SECONDS.toNanos(1) / Math.max(1, ratePerSecond);

@@ -1,5 +1,7 @@
 plugins {
   id("trace.java-conventions")
+  // The property harness and the fake stores are shared with the storage modules' suites.
+  `java-test-fixtures`
 }
 
 description =
@@ -9,5 +11,7 @@ description =
 dependencies {
   api(project(":trace-api"))
 
+  testFixturesCompileOnly(libs.jspecify)
+  testImplementation(testFixtures(project(":trace-core")))
   testImplementation(libs.archunit)
 }
