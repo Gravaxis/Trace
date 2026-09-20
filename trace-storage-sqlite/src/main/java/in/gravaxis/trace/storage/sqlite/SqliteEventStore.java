@@ -61,6 +61,9 @@ public final class SqliteEventStore implements EventStore {
     private static final String META_FORMAT = "format_version";
     private static final int STATE_LIVE = 0;
 
+    /** No frame has been applied yet. Journal positions start at zero, so this cannot be zero. */
+    private static final long NOTHING_APPLIED = -1L;
+
     private final Path directory;
     private final Path shardDirectory;
     private final FileChannel lockChannel;
@@ -154,7 +157,10 @@ public final class SqliteEventStore implements EventStore {
                             + SqliteSchema.FORMAT_VERSION + "). Downgrading is not supported.");
         }
         String applied = readMeta(META_APPLIED_LSN);
-        appliedLsn = applied == null ? 0L : Long.parseLong(applied);
+        // Minus one, not zero: the journal's first frame lives at position zero, and a watermark of
+        // zero would silently discard it. That cost the first frame of every run until an
+        // integration test noticed five missing blocks.
+        appliedLsn = applied == null ? NOTHING_APPLIED : Long.parseLong(applied);
     }
 
     /** A shard file with no manifest row was never published; a crash mid-seal leaves one behind. */

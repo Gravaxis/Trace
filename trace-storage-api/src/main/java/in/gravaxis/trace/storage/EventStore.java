@@ -36,7 +36,12 @@ public interface EventStore extends AutoCloseable {
      */
     void append(RecordBatch batch, long journalPosition) throws StoreException;
 
-    /** The highest journal position durably applied. Replay resumes from here. */
+    /**
+     * The highest journal position durably applied, or -1 when nothing has been.
+     *
+     * <p>Replay resumes from the next position. It cannot be zero-for-nothing: the journal's first
+     * frame is written at position zero.
+     */
     long appliedLsn() throws StoreException;
 
     /**

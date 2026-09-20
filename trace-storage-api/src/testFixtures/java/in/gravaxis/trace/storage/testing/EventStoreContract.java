@@ -136,6 +136,26 @@ public abstract class EventStoreContract {
     }
 
     @Test
+    @DisplayName("the batch at journal position zero is kept")
+    void keepsTheFirstJournalPosition() throws StoreException {
+        // A journal's first frame sits at position zero. A store that reports "nothing applied" as
+        // zero and then discards anything "at or below" it eats that frame, and the loss is
+        // invisible: the counters say written, the scan says missing. An integration test caught
+        // exactly this, five blocks at a time, so it is pinned here.
+        assertThat(store.appliedLsn()).isNegative();
+
+        List<Events> events = line(3, T0);
+        append(events, 0);
+
+        assertThat(scanAll(planFor(events))).hasSize(events.size());
+        assertThat(store.appliedLsn()).isZero();
+
+        // And it is still idempotent at zero: re-applying the same frame must not double it.
+        append(events, 0);
+        assertThat(scanAll(planFor(events))).hasSize(events.size());
+    }
+
+    @Test
     @DisplayName("the scan order is exactly the one the plan asked for")
     void ordersAsAsked() throws StoreException {
         List<Events> events = line(6, T0);
