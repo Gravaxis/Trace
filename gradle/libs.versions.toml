@@ -1,0 +1,69 @@
+# Every version is pinned literally. Dynamic versions are forbidden: Paper publishes a real
+# artifact per build, and its maven-metadata <latest> currently points at a stray pre-release,
+# so "+" or "latest.release" would make builds irreproducible. Renovate bumps these.
+# Verified against primary sources on 2026-09-20 (see docs/decisions/provenance.md).
+
+[versions]
+java = "25"
+# Minecraft 26.3 is the current game release, but Paper 26.3 is ALPHA-only and Folia has no 26.3
+# build at all, so the project targets the newest STABLE Paper line. See ADR-0001.
+minecraft = "26.2"
+paper-api = "26.2.build.126-stable"
+folia-api = "26.2.build.7-beta"
+
+junit = "6.1.3"
+assertj = "3.27.7"
+mockbukkit = "4.116.1"
+archunit = "1.5.0"
+jmh = "1.37"
+
+# Paper bundles org.xerial:sqlite-jdbc 3.49.1.0 on the server classpath and plugin classloaders are
+# parent-first, so this is the version Trace actually runs against. See ADR-0003.
+sqlite-jdbc = "3.49.1.0"
+roaringbitmap = "1.6.23"
+zstd-jni = "1.5.7-17"
+jspecify = "1.0.1"
+
+errorprone-core = "2.50.0"
+nullaway = "0.14.1"
+palantir-format = "2.98.0"
+
+# Gradle plugins
+plugin-shadow = "9.6.1"
+plugin-run-paper = "3.1.0"
+plugin-resource-factory = "1.3.1"
+plugin-spotless = "8.10.2"
+plugin-errorprone = "5.1.1"
+plugin-maven-publish = "0.37.0"
+plugin-forbidden-apis = "3.10"
+
+[libraries]
+paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }
+folia-api = { module = "dev.folia:folia-api", version.ref = "folia-api" }
+jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
+
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+mockbukkit = { module = "org.mockbukkit.mockbukkit:mockbukkit-v26.2", version.ref = "mockbukkit" }
+archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" }
+
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
+roaringbitmap = { module = "org.roaringbitmap:RoaringBitmap", version.ref = "roaringbitmap" }
+zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd-jni" }
+
+jmh-core = { module = "org.openjdk.jmh:jmh-core", version.ref = "jmh" }
+jmh-generator = { module = "org.openjdk.jmh:jmh-generator-annprocess", version.ref = "jmh" }
+
+errorprone-core = { module = "com.google.errorprone:error_prone_core", version.ref = "errorprone-core" }
+nullaway = { module = "com.uber.nullaway:nullaway", version.ref = "nullaway" }
+
+[plugins]
+shadow = { id = "com.gradleup.shadow", version.ref = "plugin-shadow" }
+run-paper = { id = "xyz.jpenilla.run-paper", version.ref = "plugin-run-paper" }
+resource-factory-paper = { id = "xyz.jpenilla.resource-factory-paper-convention", version.ref = "plugin-resource-factory" }
+spotless = { id = "com.diffplug.spotless", version.ref = "plugin-spotless" }
+errorprone = { id = "net.ltgt.errorprone", version.ref = "plugin-errorprone" }
+maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "plugin-maven-publish" }
+forbidden-apis = { id = "de.thetaphi.forbiddenapis", version.ref = "plugin-forbidden-apis" }
