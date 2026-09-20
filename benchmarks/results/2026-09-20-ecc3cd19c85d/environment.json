@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-09-20T07:28:26.894949800Z",
+  "commit": "ecc3cd19c85d",
+  "dirtyWorkingTree": false,
+  "os": "Windows 10 10.0",
+  "arch": "amd64",
+  "cpu": "AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD",
+  "cpuThreads": 16,
+  "jvm": "Oracle Corporation 25.0.4+7-LTS-189",
+  "gradle": "9.7.1",
+  "paperBuild": "26.2 build 126",
+  "foliaBuild": "26.2 build 7"
+}

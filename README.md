@@ -16,7 +16,16 @@ table below by a script — never typed by hand. Raw results are committed under
 measured on.
 
 <!-- bench:start -->
-_No benchmark results have been recorded yet._
+| Scenario | Server | Parameters | blocks.perSecond | blocks.written | heap.collections | heap.peakAfterGc | tick.max | tick.p50 | tick.p99 | tick.samples | wall.elapsed |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `block-churn` | Folia 26.2 | ticks=200, blocksPerTick=256 | 5024.581 per second | 51200 | 0 | — | 261.58 ms | 1.03 ms | 5.80 ms | 200 | 10189.91 ms |
+| `block-churn` | Paper 26.2 | ticks=200, blocksPerTick=256 | 5124.090 per second | 51200 | 2 | 262.9 MiB | 286.13 ms | 1.83 ms | 9.83 ms | 200 | 9992.02 ms |
+
+Allocation gate (JMH `gc.alloc.rate.norm`): `allocatingReference` 48.000 B/op, `emptyBaseline` 6.6e-06 B/op, `encodeIntoPreallocatedBuffer` 3.8e-05 B/op.
+
+Crash injection: 2/2 restarts verified on paper 26.2 build 126 after SIGKILL at 2497, 1045 ms.
+
+Measured on AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD, 16 threads, Windows 10 10.0, Oracle Corporation 25.0.4+7-LTS-189, Paper 26.2 build 126. Raw results: [`benchmarks/results/2026-09-20-ecc3cd19c85d`](benchmarks/results/2026-09-20-ecc3cd19c85d).
 <!-- bench:end -->
 
 ## Install
