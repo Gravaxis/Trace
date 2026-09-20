@@ -38,6 +38,14 @@ added in between exist at compile time but not on the Folia server we claim to s
 6. The repository owner accepted the Minecraft EULA for the throwaway servers the build starts. The
    launcher writes `eula=true` into each disposable run directory and nowhere else.
 
+## Observed, 2026-09-20
+
+Booting the M0 plugin (`api-version: '26.2'`) on **Paper 26.3 build 26 (ALPHA)** succeeded: the
+plugin enabled and the harness reported PASS. That confirms experimentally what the source scan only
+suggested — `paper-plugin.yml` has no upper-bound API-version check, unlike legacy `plugin.yml`. So
+a 26.2-targeted build is not locked out of the newer line; the reason to wait is Folia and the
+integration plugins, not the descriptor.
+
 ## Consequences
 
 * Trace targets one Minecraft version behind the newest release for a few weeks each cycle. That is
