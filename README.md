@@ -28,14 +28,14 @@ one run really did lose something, because a crash that loses nothing verifies n
 <!-- bench:start -->
 | Scenario | Server | Parameters | blocks.perSecond | blocks.written | heap.collections | heap.peakAfterGc | tick.max | tick.p50 | tick.p99 | tick.samples | wall.elapsed |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `block-churn` | Folia 26.2 | ticks=200, blocksPerTick=256 | 5070.370 per second | 51200 | 1 | 252.0 MiB | 193.44 ms | 0.59 ms | 5.86 ms | 200 | 10097.88 ms |
-| `block-churn` | Paper 26.2 | ticks=200, blocksPerTick=256 | 5120.534 per second | 51200 | 2 | 289.1 MiB | 189.68 ms | 0.62 ms | 4.73 ms | 200 | 9998.96 ms |
+| `block-churn` | Folia 26.2 | ticks=200, blocksPerTick=256 | 5070.478 per second | 51200 | 0 | not measured | 175.97 ms | 0.82 ms | 4.77 ms | 200 | 10097.67 ms |
+| `block-churn` | Paper 26.2 | ticks=200, blocksPerTick=256 | 5119.646 per second | 51200 | 2 | 287.3 MiB | 188.42 ms | 0.65 ms | 4.72 ms | 200 | 10000.69 ms |
 
-Allocation gate (JMH `gc.alloc.rate.norm`): `allocatingReference` 48.000 B/op, `emptyBaseline` 1.5e-05 B/op, `capturePublishedToRing` 0.002 B/op, `captureRejectedAtTickEnd` 0.001 B/op.
+Allocation gate (JMH `gc.alloc.rate.norm`): `allocatingReference` 48.000 B/op, `emptyBaseline` 1.4e-05 B/op, `capturePublishedToRing` 0.002 B/op, `captureRejectedAtTickEnd` 0.001 B/op.
 
 Crash injection: 2/2 restarts verified on paper 26.2 build 126 after SIGKILL at 2497, 1045 ms; 3/3 restarts verified on folia 26.2 build 7 after SIGKILL at 2973, 3024, 2868 ms; 3/3 restarts verified on paper 26.2 build 126 after SIGKILL at 2973, 3024, 2868 ms.
 
-Measured on AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD, 16 threads, Windows 10 10.0, Oracle Corporation 25.0.4+7-LTS-189, Paper 26.2 build 126. Raw results: [`benchmarks/results/2026-09-20-8ed713e43277`](benchmarks/results/2026-09-20-8ed713e43277).
+Measured on AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD, 16 threads, Windows 10 10.0, Oracle Corporation 25.0.4+7-LTS-189, Paper 26.2 build 126. Raw results: [`benchmarks/results/2026-09-20-20b6d23ae2f0`](benchmarks/results/2026-09-20-20b6d23ae2f0).
 <!-- bench:end -->
 
 ## Install

@@ -91,7 +91,14 @@ A run that lost nothing verifies nothing, so the rig fails a set of iterations i
 ever lost an event. Each committed run records, per iteration, the kill delay, how many events the
 killed server had written down, how many Trace did not have, and whether the iteration was lossy at
 all: see `crash/` inside the newest directory under `benchmarks/results/`. Those files are the only
-place a figure about what a crash costs may be read from.
+place a figure about what a crash costs may be read from, and everything in this paragraph is read
+from them.
+
+In the committed run, kills at roughly three seconds lost 438, 1,183 and 554 events of about 47,000
+recorded on Paper, and 874, none and 695 of about 72,000 on Folia. Every one of those losses was
+inside the recorded gap. The Folia iteration that lost nothing is the inconclusive arm doing its
+job: its kill landed between ticks, the coverage property was never exercised, and the run passed
+only because the other two iterations did lose something.
 
 *Not established, and each of these is a real hole rather than a formality:*
 

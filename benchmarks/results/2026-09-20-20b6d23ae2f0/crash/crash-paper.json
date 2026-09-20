@@ -1,0 +1,11 @@
+{
+  "task": "crashTest",
+  "server": "paper 26.2 build 126",
+  "seed": 20260920,
+  "iterations": 2,
+  "killDelayRangeMs": [750, 4000],
+  "outcomes": [{"iteration": 0, "killDelayMs": 2497, "verified": true, "lossy": false, "recordedEvents": -1, "lostEvents": -1}, {"iteration": 1, "killDelayMs": 1045, "verified": true, "lossy": false, "recordedEvents": -1, "lostEvents": -1}],
+  "lossyIterations": 0,
+  "minLossyIterations": 0,
+  "failures": 0
+}
