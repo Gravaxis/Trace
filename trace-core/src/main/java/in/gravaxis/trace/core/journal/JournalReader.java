@@ -56,7 +56,7 @@ public final class JournalReader {
      */
     public static ReplaySummary replay(Path directory, long fromLsn, FrameHandler handler) throws IOException {
         if (!Files.isDirectory(directory)) {
-            return new ReplaySummary(fromLsn, 0, 0, false, 0);
+            return new ReplaySummary(fromLsn, 0, 0, false, 0, 0);
         }
         List<Path> segments = segmentsOf(directory);
         long endLsn = fromLsn;
@@ -64,6 +64,8 @@ public final class JournalReader {
         long records = 0;
         boolean cleanClose = false;
         long lastMaxCapture = 0;
+        Long lastSalt = null;
+        int runs = 0;
 
         for (Path segment : segments) {
             long base = JournalWriter.segmentBaseOf(segment);
@@ -72,7 +74,6 @@ public final class JournalReader {
                         ByteBuffer.allocate(JournalFrames.HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN);
                 long offset = 0;
                 long size = channel.size();
-                Long segmentSalt = null;
                 while (offset + JournalFrames.HEADER_BYTES <= size) {
                     header.clear();
                     readFully(channel, header, offset);
@@ -87,12 +88,13 @@ public final class JournalReader {
                         break;
                     }
                     long salt = header.getLong(JournalFrames.OFFSET_SALT);
-                    if (segmentSalt == null) {
-                        segmentSalt = salt;
-                    } else if (salt != segmentSalt) {
-                        // Recycled space from an earlier run: valid-looking, but not ours.
-                        break;
+                    if (lastSalt == null || salt != lastSalt) {
+                        // A new run picked the log up and appended to it. That is a restart
+                        // boundary, not the end of the log: the frame is ours if it is intact and
+                        // in the right place, which rules one and two have already decided.
+                        runs++;
                     }
+                    lastSalt = salt;
                     int payloadBytes = header.getInt(JournalFrames.OFFSET_PAYLOAD_LENGTH);
                     if (payloadBytes < 0 || offset + JournalFrames.HEADER_BYTES + payloadBytes > size) {
                         break;
@@ -122,7 +124,7 @@ public final class JournalReader {
                 }
             }
         }
-        return new ReplaySummary(endLsn, frames, records, cleanClose, lastMaxCapture);
+        return new ReplaySummary(endLsn, frames, records, cleanClose, lastMaxCapture, runs);
     }
 
     /** Where a segment's valid frames end, used when reopening the journal for appending. */
@@ -132,7 +134,6 @@ public final class JournalReader {
             ByteBuffer header = ByteBuffer.allocate(JournalFrames.HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN);
             long offset = 0;
             long size = channel.size();
-            Long segmentSalt = null;
             while (offset + JournalFrames.HEADER_BYTES <= size) {
                 header.clear();
                 readFully(channel, header, offset);
@@ -141,12 +142,9 @@ public final class JournalReader {
                         || header.getLong(JournalFrames.OFFSET_LSN) != base + offset) {
                     break;
                 }
-                long salt = header.getLong(JournalFrames.OFFSET_SALT);
-                if (segmentSalt == null) {
-                    segmentSalt = salt;
-                } else if (salt != segmentSalt) {
-                    break;
-                }
+                // The salt is read but does not end the scan: see replay(). Stopping here on a
+                // change would truncate every frame a previous run appended to this segment, which
+                // is exactly what it used to do.
                 int payloadBytes = header.getInt(JournalFrames.OFFSET_PAYLOAD_LENGTH);
                 if (payloadBytes < 0 || offset + JournalFrames.HEADER_BYTES + payloadBytes > size) {
                     break;
@@ -196,11 +194,14 @@ public final class JournalReader {
     /**
      * What a replay found.
      *
+     * @param runs how many runs wrote the frames that were read, counted by salt changes; more
+     *     than one simply means the server was restarted with this segment still current
      * @param endLsn where the valid log ends; appending continues here
      * @param frames frames replayed
      * @param records event records replayed
      * @param cleanClose whether the last frame said the server shut down in an orderly way
      * @param lastCaptureMillis the newest capture timestamp seen, for bounding a crash gap
      */
-    public record ReplaySummary(long endLsn, long frames, long records, boolean cleanClose, long lastCaptureMillis) {}
+    public record ReplaySummary(
+            long endLsn, long frames, long records, boolean cleanClose, long lastCaptureMillis, int runs) {}
 }

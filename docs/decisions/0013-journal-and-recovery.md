@@ -31,14 +31,39 @@ length, record count, the frame's own LSN, the minimum and maximum capture times
 **low-water mark** (the oldest unjournalled capture timestamp across all slots at write time, used
 for gap bounds — ADR-0012), a **segment salt** stamped when the segment was opened, and a CRC32C.
 
-Three rules make the tail unambiguous:
+Two rules make the tail unambiguous:
 
 1. the CRC covers the **entire** header (except the CRC field itself) plus the payload;
-2. `frame.lsn` must equal the position the frame was read from;
-3. `frame.salt` must equal the segment's current salt.
+2. `frame.lsn` must equal the position the frame was read from.
 
-The log ends at the first frame that fails any of them. A recycled segment's stale frames fail rule
-three even if they are otherwise intact.
+The log ends at the first frame that fails either of them. A recycled segment's stale frames fail
+rule two, because the LSN is the absolute position and the segment's base is in its filename, so
+they cannot agree anywhere else.
+
+The salt identifies **the run that wrote the frame**. It is read and reported (`ReplaySummary.runs`)
+but it is not a validity rule.
+
+### Correction, 2026-09-20
+
+This section originally carried a third rule — *`frame.salt` must equal the segment's current salt* —
+with "current" implemented as whatever salt the segment's first frame carried. A segment stays
+current across a restart, so the second run's frames carried a different salt, and:
+
+* the reader stopped at the first frame of the second run, reporting the log as ending there;
+* the writer, which resumes at the reader's end position, then **truncated every frame the previous
+  runs had written past that point**;
+* the store's applied watermark had already advanced past those positions, so every frame the new
+  run wrote was at or below it and was discarded as an already-applied replay.
+
+The visible symptom was a server that captured, journalled and counted 36 records and then rolled
+back nothing at all, with no error anywhere. Found by the M2 integration scenario on its second run
+against a data directory left over from the first; a unit test in `JournalRoundTripTest` had
+asserted the truncation as intended behaviour, with a comment explaining why it was fine.
+
+Two changes, both tested: a salt change is a restart boundary rather than end-of-log, and
+`JournalWriter.open` takes the store's applied watermark as a floor — if the log does not already
+reach past it, a new segment is started above it, so journal positions can never move backwards
+relative to what the store has applied. `TraceRuntime` refuses to start if they ever do.
 
 Frame types: `EVENTS`, `DICT` (dictionary additions, always journalled before the first event that
 uses the id), `BLOB`, `GAP`, `CHECKPOINT`, `CLEAN_CLOSE`, `PAD`.

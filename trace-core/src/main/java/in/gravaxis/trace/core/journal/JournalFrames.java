@@ -67,4 +67,9 @@ public final class JournalFrames {
     public static int align(int length) {
         return (length + 7) & ~7;
     }
+
+    /** Rounds a journal position up to the same alignment, for choosing a segment base. */
+    public static long align(long position) {
+        return (position + 7) & ~7L;
+    }
 }

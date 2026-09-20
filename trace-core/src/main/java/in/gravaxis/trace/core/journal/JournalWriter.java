@@ -31,6 +31,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class JournalWriter implements AutoCloseable {
 
+    /** Passed as the floor when the caller has no applied watermark to respect. */
+    public static final long NO_FLOOR = -1L;
+
     private static final String SEGMENT_PREFIX = "j-";
     private static final String SEGMENT_SUFFIX = ".tjl";
 
@@ -62,9 +65,24 @@ public final class JournalWriter implements AutoCloseable {
      *
      * @param directory where segments live
      * @param segmentBytes roll to a new segment past this size
-     * @param salt identifies this run's segments; a fresh value each time the journal is opened
+     * @param salt identifies this run's frames; a fresh value each time the journal is opened
      */
     public static JournalWriter open(Path directory, long segmentBytes, long salt) throws IOException {
+        return open(directory, segmentBytes, salt, NO_FLOOR);
+    }
+
+    /**
+     * Opens the journal for appending at a position strictly above {@code floorLsn}.
+     *
+     * <p>The floor is the store's applied watermark. The store discards any frame at or below it, so
+     * a journal that resumed below the floor would have every new frame silently thrown away —
+     * captured, journalled, counted, and gone. If the log does not already reach past the floor, a
+     * fresh segment is started above it instead, which keeps positions monotonic even if the journal
+     * was truncated, restored from a backup, or replaced by hand.
+     *
+     * @param floorLsn a position the journal must start after, or {@link #NO_FLOOR}
+     */
+    public static JournalWriter open(Path directory, long segmentBytes, long salt, long floorLsn) throws IOException {
         Files.createDirectories(directory);
         JournalScan scan = JournalScan.scan(directory);
         long base;
@@ -78,6 +96,11 @@ public final class JournalWriter implements AutoCloseable {
             base = scan.lastSegmentBase();
             offset = scan.endLsn() - base;
             segment = scan.lastSegment();
+        }
+        if (base + offset <= floorLsn) {
+            base = JournalFrames.align(floorLsn + 1);
+            offset = 0;
+            segment = directory.resolve(segmentName(base));
         }
         FileChannel channel =
                 FileChannel.open(segment, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);

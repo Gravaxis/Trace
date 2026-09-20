@@ -192,11 +192,14 @@ class JournalRoundTripTest {
             writer.force();
         }
 
-        // The salt changes per run, so the second run's frames end the replay at their own tail —
-        // which is why a reopen truncates to the last valid frame rather than appending blindly.
+        // This assertion used to read isEqualTo(3), with a comment explaining why losing the first
+        // run's frames was fine. It was not fine: the salt changes per run, the reader stopped at
+        // the change, and the reopen then truncated everything before it. Both runs' records are
+        // still records.
         JournalReader.ReplaySummary summary =
                 JournalReader.replay(directory, 0, (lsn, type, words, count, min, max) -> {});
-        assertThat(summary.records()).isEqualTo(3);
+        assertThat(summary.records()).isEqualTo(6);
+        assertThat(summary.runs()).isEqualTo(2);
     }
 
     private Path onlySegment() throws IOException {
@@ -212,6 +215,62 @@ class JournalRoundTripTest {
             byte value = (byte) (one.get(0) ^ (1 << bit));
             channel.write(ByteBuffer.wrap(new byte[] {value}), at);
         }
+    }
+
+    @Test
+    @DisplayName("frames written by earlier runs survive reopening")
+    void keepsWhatEarlierRunsWrote() throws IOException {
+        // Each run stamps its own salt. A reader that treated a salt change as the end of the log
+        // truncated every earlier run's frames on the next open, and a whole session's history went
+        // with them — the counters said written, the store had nothing.
+        long[] ends = new long[3];
+        for (int run = 0; run < 3; run++) {
+            try (JournalWriter writer = JournalWriter.open(directory, 1 << 20, 1000L + run)) {
+                writer.appendEvents(records(run, 4), 4, run, run + 1, run);
+                writer.appendEvents(records(run + 10, 4), 4, run, run + 1, run);
+                writer.force();
+                ends[run] = writer.nextLsn();
+            }
+        }
+
+        List<Long> positions = new ArrayList<>();
+        JournalReader.ReplaySummary summary =
+                JournalReader.replay(directory, 0, (lsn, type, words, count, min, max) -> {
+                    if (type == JournalFrames.TYPE_EVENTS) {
+                        positions.add(lsn);
+                    }
+                });
+
+        assertThat(summary.frames()).isEqualTo(6);
+        assertThat(summary.records()).isEqualTo(24);
+        assertThat(summary.runs()).isEqualTo(3);
+        assertThat(summary.endLsn()).isEqualTo(ends[2]);
+        assertThat(positions).isSorted().doesNotHaveDuplicates();
+    }
+
+    @Test
+    @DisplayName("a floor pushes the next position past an applied watermark")
+    void respectsAnAppliedFloor() throws IOException {
+        try (JournalWriter writer = JournalWriter.open(directory, 1 << 20, 1L)) {
+            writer.appendEvents(records(0, 4), 4, 0, 1, 0);
+            writer.force();
+        }
+
+        // The store says it has applied everything up to a position beyond the log — the journal was
+        // truncated, restored, or replaced. Resuming below that would mean every frame this run
+        // writes is discarded as an already-applied replay.
+        long floor = 1_000_000L;
+        try (JournalWriter writer = JournalWriter.open(directory, 1 << 20, 2L, floor)) {
+            assertThat(writer.nextLsn()).isGreaterThan(floor);
+            writer.appendEvents(records(1, 4), 4, 0, 1, 0);
+            writer.force();
+        }
+
+        List<Long> positions = new ArrayList<>();
+        JournalReader.replay(directory, 0, (lsn, type, words, count, min, max) -> positions.add(lsn));
+
+        assertThat(positions).hasSize(2).isSorted();
+        assertThat(positions.get(1)).isGreaterThan(floor);
     }
 
     private static long[] records(int frame, int count) {
