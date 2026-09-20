@@ -173,7 +173,11 @@ public final class StoreConsumer implements Runnable {
         try {
             // The low-water mark bounds a crash gap later: it is the oldest capture time that is
             // still only in memory as this frame is written.
-            long lowWatermark = minCapture;
+            // The oldest capture that could still be missing after a crash: the oldest record in
+            // this frame, or something older still staged on a capture thread that has not reached
+            // its tick end. Taking only this frame's minimum would let a gap start after an event
+            // staged earlier on another region thread, which is the one thing a gap must never do.
+            long lowWatermark = Math.min(minCapture, capture.oldestStagedMillis());
             long lsn = journal.appendEvents(buffer, buffered, minCapture, maxCapture, lowWatermark);
             framesWritten.incrementAndGet();
 

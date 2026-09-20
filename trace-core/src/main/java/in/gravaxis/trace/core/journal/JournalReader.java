@@ -56,7 +56,7 @@ public final class JournalReader {
      */
     public static ReplaySummary replay(Path directory, long fromLsn, FrameHandler handler) throws IOException {
         if (!Files.isDirectory(directory)) {
-            return new ReplaySummary(fromLsn, 0, 0, false, 0, 0);
+            return new ReplaySummary(fromLsn, 0, 0, false, 0, 0, 0);
         }
         List<Path> segments = segmentsOf(directory);
         long endLsn = fromLsn;
@@ -66,6 +66,7 @@ public final class JournalReader {
         long lastMaxCapture = 0;
         Long lastSalt = null;
         int runs = 0;
+        long lastLowWatermark = 0;
 
         for (Path segment : segments) {
             long base = JournalWriter.segmentBaseOf(segment);
@@ -119,12 +120,16 @@ public final class JournalReader {
                     }
                     cleanClose = type == JournalFrames.TYPE_CLEAN_CLOSE;
                     lastMaxCapture = Math.max(lastMaxCapture, maxCapture);
+                    long mark = header.getLong(JournalFrames.OFFSET_LOW_WATERMARK);
+                    if (mark > 0) {
+                        lastLowWatermark = mark;
+                    }
                     offset += JournalFrames.HEADER_BYTES + JournalFrames.align(payloadBytes);
                     endLsn = base + offset;
                 }
             }
         }
-        return new ReplaySummary(endLsn, frames, records, cleanClose, lastMaxCapture, runs);
+        return new ReplaySummary(endLsn, frames, records, cleanClose, lastMaxCapture, runs, lastLowWatermark);
     }
 
     /** Where a segment's valid frames end, used when reopening the journal for appending. */
@@ -196,6 +201,8 @@ public final class JournalReader {
      *
      * @param runs how many runs wrote the frames that were read, counted by salt changes; more
      *     than one simply means the server was restarted with this segment still current
+     * @param lastLowWatermarkMillis the oldest capture time the last frame said might still be
+     *     un-journalled, which is the lower bound a crash gap has to start at
      * @param endLsn where the valid log ends; appending continues here
      * @param frames frames replayed
      * @param records event records replayed
@@ -203,5 +210,11 @@ public final class JournalReader {
      * @param lastCaptureMillis the newest capture timestamp seen, for bounding a crash gap
      */
     public record ReplaySummary(
-            long endLsn, long frames, long records, boolean cleanClose, long lastCaptureMillis, int runs) {}
+            long endLsn,
+            long frames,
+            long records,
+            boolean cleanClose,
+            long lastCaptureMillis,
+            int runs,
+            long lastLowWatermarkMillis) {}
 }

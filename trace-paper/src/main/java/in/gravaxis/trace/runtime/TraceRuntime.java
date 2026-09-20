@@ -227,7 +227,17 @@ public final class TraceRuntime implements AutoCloseable {
             // the tick that was in flight. The gap says so, so a rollback over that moment refuses
             // rather than quietly working from history with a hole in it.
             long lastKnown = Math.max(summary.lastCaptureMillis(), newestFileTime(journalDirectory, ringDirectory));
-            long from = summary.lastCaptureMillis() > 0 ? summary.lastCaptureMillis() : lastKnown;
+            // The lower bound comes from the journal's low-water mark, not from the newest capture
+            // it managed to write. The newest capture is the wrong bound: with several capture
+            // threads, one of them can still be holding something older, and a gap that starts
+            // after an event it must cover is worse than no gap, because a rollback then runs over
+            // that moment believing the history complete.
+            long mark = summary.lastLowWatermarkMillis();
+            long lastCapture = summary.lastCaptureMillis();
+            long from = mark > 0 ? Math.min(mark, lastCapture > 0 ? lastCapture : mark) : lastCapture;
+            if (from <= 0) {
+                from = lastKnown;
+            }
             long to = lastKnown + CRASH_GAP_MARGIN_MILLIS;
             if (from > 0 && to >= from) {
                 store.recordGap(new GapRecord(

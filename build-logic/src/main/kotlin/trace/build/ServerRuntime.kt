@@ -245,6 +245,18 @@ internal object ServerRuntime {
     }
 
     /** Minimal reader for the harness result file: status plus the failure list. */
+    /**
+     * One value out of a harness result's details, or null when the run did not record it.
+     *
+     * An absent key is not a failure: an older scenario simply does not report it, and a task that
+     * treats missing as false keeps working against results it predates.
+     */
+    fun readDetail(resultFile: File, key: String): String? {
+        if (!resultFile.isFile) return null
+        val details = Json.asMap(Json.asMap(Json.parse(resultFile.readText()))["details"])
+        return details[key]?.toString()
+    }
+
     fun readResult(file: File): Pair<Boolean, String> {
         if (!file.isFile) return false to "no result file at $file"
         val text = file.readText()

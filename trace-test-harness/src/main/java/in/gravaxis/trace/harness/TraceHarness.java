@@ -11,6 +11,8 @@ package in.gravaxis.trace.harness;
 import in.gravaxis.trace.harness.scenarios.BlockBreakRollbackScenario;
 import in.gravaxis.trace.harness.scenarios.BlockChurnScenario;
 import in.gravaxis.trace.harness.scenarios.BootScenario;
+import in.gravaxis.trace.harness.scenarios.CrashJournalVerifyScenario;
+import in.gravaxis.trace.harness.scenarios.CrashJournalWriteScenario;
 import in.gravaxis.trace.harness.scenarios.CrashVerifyScenario;
 import in.gravaxis.trace.harness.scenarios.CrashWriteScenario;
 import io.papermc.paper.ServerBuildInfo;
@@ -50,12 +52,14 @@ public final class TraceHarness extends JavaPlugin {
     /** Ticks to wait after enable so the server finishes loading before a scenario starts. */
     private static final long START_DELAY_TICKS = 20L;
 
-    private static final Map<String, Scenario> SCENARIOS = Map.of(
-            "boot", new BootScenario(),
-            "block-churn", new BlockChurnScenario(),
-            "block-break-rollback", new BlockBreakRollbackScenario(),
-            "crash-write", new CrashWriteScenario(),
-            "crash-verify", new CrashVerifyScenario());
+    private static final Map<String, Scenario> SCENARIOS = Map.ofEntries(
+            Map.entry("boot", new BootScenario()),
+            Map.entry("block-churn", new BlockChurnScenario()),
+            Map.entry("block-break-rollback", new BlockBreakRollbackScenario()),
+            Map.entry("crash-write", new CrashWriteScenario()),
+            Map.entry("crash-verify", new CrashVerifyScenario()),
+            Map.entry("crash-journal-write", new CrashJournalWriteScenario()),
+            Map.entry("crash-journal-verify", new CrashJournalVerifyScenario()));
 
     @Override
     public void onEnable() {

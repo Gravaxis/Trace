@@ -14,7 +14,11 @@ import in.gravaxis.trace.core.geom.BlockBox;
 import in.gravaxis.trace.dictionary.ActorDictionary;
 import in.gravaxis.trace.rollback.RollbackSummary;
 import in.gravaxis.trace.runtime.TraceRuntime;
+import in.gravaxis.trace.storage.GapRecord;
+import in.gravaxis.trace.storage.MutationBatch;
+import in.gravaxis.trace.storage.MutationCursor;
 import in.gravaxis.trace.storage.RollbackOperation;
+import in.gravaxis.trace.storage.ScanPlan;
 import io.papermc.paper.ServerBuildInfo;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.kyori.adventure.key.Key;
@@ -189,6 +193,87 @@ public final class Trace extends JavaPlugin implements TraceApi {
             return out.toString();
         } catch (Exception e) {
             getSLF4JLogger().error("Could not list rollbacks", e);
+            return "failed: " + e;
+        }
+    }
+
+    /**
+     * Every position the store holds in a box and window, as {@code x:y:z} separated by semicolons.
+     *
+     * <p>A seam for the crash rig, which has to answer one question after a restart: of the events
+     * it knows happened, which ones did Trace keep? Returning positions rather than a count is the
+     * point — "how many" cannot tell you <em>which</em> are missing, and the property being tested
+     * is about each missing event individually.
+     */
+    @ApiStatus.Internal
+    public String storedPositions(
+            String worldName, int minX, int minY, int minZ, int maxX, int maxY, int maxZ, long from, long to) {
+        TraceRuntime current = runtime;
+        if (current == null) {
+            return "refused: Trace is not running";
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return "refused: no world named " + worldName;
+        }
+        int worldId = current.worlds().idOf(world);
+        if (worldId < 0) {
+            return "refused: no history for " + worldName;
+        }
+        try {
+            current.consumer().flushAndSeal(30_000);
+            ScanPlan plan = ScanPlan.of(
+                    worldId, new BlockBox(minX, minY, minZ, maxX, maxY, maxZ), from, to, ScanPlan.Order.OLDEST_FIRST);
+            StringBuilder out = new StringBuilder(1 << 16);
+            MutationBatch batch = new MutationBatch(plan.batchSize());
+            try (MutationCursor cursor = current.store().scan(plan)) {
+                while (cursor.next(batch)) {
+                    for (int i = 0; i < batch.size(); i++) {
+                        if (!out.isEmpty()) {
+                            out.append(';');
+                        }
+                        out.append(batch.x(i))
+                                .append(':')
+                                .append(batch.y(i))
+                                .append(':')
+                                .append(batch.z(i));
+                    }
+                }
+            }
+            return out.toString();
+        } catch (Exception e) {
+            getSLF4JLogger().error("Could not list stored positions", e);
+            return "failed: " + e;
+        }
+    }
+
+    /**
+     * Gaps overlapping a window, as {@code from-to:reason} separated by semicolons.
+     *
+     * <p>The other half of the crash rig's question: for every event Trace did not keep, is there a
+     * recorded gap saying so? An uncovered loss is history with a silent hole in it.
+     */
+    @ApiStatus.Internal
+    public String gapsBetween(long from, long to) {
+        TraceRuntime current = runtime;
+        if (current == null) {
+            return "refused: Trace is not running";
+        }
+        try {
+            StringBuilder out = new StringBuilder();
+            for (GapRecord gap : current.store().gapsBetween(from, to)) {
+                if (!out.isEmpty()) {
+                    out.append(';');
+                }
+                out.append(gap.fromMillis())
+                        .append('-')
+                        .append(gap.toMillis())
+                        .append(':')
+                        .append(gap.reason());
+            }
+            return out.toString();
+        } catch (Exception e) {
+            getSLF4JLogger().error("Could not list gaps", e);
             return "failed: " + e;
         }
     }

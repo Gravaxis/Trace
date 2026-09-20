@@ -167,6 +167,54 @@ val crashTest = tasks.register<CrashInjectionTask>("crashTest") {
   serverCacheDirectory.fileValue(serverCache)
 }
 
+/**
+ * The durability gate: kill a server while Trace is capturing, restart, and check that every event
+ * it lost is inside a recorded gap.
+ *
+ * Unlike `crashTest`, which shoots at the harness's own forced log and so proves the rig works,
+ * these shoot at Trace. `minLossyIterations` is what keeps them honest: a kill that lands between
+ * ticks loses nothing, and a set of iterations that never lost anything has verified nothing.
+ */
+fun registerJournalCrashTest(
+  taskName: String,
+  server: String,
+  serverPort: Int,
+) = tasks.register<CrashInjectionTask>(taskName) {
+  group = "verification"
+  description = "Kills a server mid-capture and checks every lost event is covered by a gap ($server)."
+  serverProject.set(server)
+  mcVersion.set(pin("$server.version"))
+  buildNumber.set(pin("$server.build").map { it.toInt() })
+  sha256.set(pin("$server.sha256"))
+  contact.set(providers.gradleProperty("trace.contact").orElse("unknown"))
+  usesService(testServerLock)
+  writeScenario.set("crash-journal-write")
+  verifyScenario.set("crash-journal-verify")
+  port.set(serverPort)
+  iterations.set(providers.gradleProperty("trace.crash.iterations").map { it.toInt() }.orElse(3))
+  minLossyIterations.set(1)
+  // Long enough for the burst to be well under way, short enough to keep the run quick.
+  minKillDelayMillis.set(1_500L)
+  maxKillDelayMillis.set(6_000L)
+  seed.set(providers.gradleProperty("trace.crash.seed").map { it.toLong() }.orElse(20260920L))
+  javaExecutable.set(launcher.map { it.executablePath.asFile.absolutePath })
+  jvmArgs.set(listOf("-Xms512M", "-Xmx1G"))
+  timeoutSeconds.set(300)
+  pluginJars.from(tracePluginJar, tasks.named("shadowJar"))
+  runDirectory.set(layout.buildDirectory.dir("test-servers/$taskName"))
+  report.set(layout.buildDirectory.file("crash-results/$taskName.json"))
+  serverCacheDirectory.fileValue(serverCache)
+}
+
+val crashJournalPaper = registerJournalCrashTest("crashJournalPaper", "paper", 25596)
+val crashJournalFolia = registerJournalCrashTest("crashJournalFolia", "folia", 25597)
+
+tasks.register("crashJournalTest") {
+  group = "verification"
+  description = "The durability gate on both platforms."
+  dependsOn(crashJournalPaper, crashJournalFolia)
+}
+
 tasks.register("benchmarkScenarios") {
   group = "verification"
   description = "Every server-side benchmark and durability scenario."

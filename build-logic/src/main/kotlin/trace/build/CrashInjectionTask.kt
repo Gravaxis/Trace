@@ -94,6 +94,18 @@ abstract class CrashInjectionTask : DefaultTask() {
     @get:OutputFile
     abstract val report: RegularFileProperty
 
+    /**
+     * Iterations that must have lost at least one event for the run to count.
+     *
+     * A kill that lands between ticks loses nothing, and a verification with nothing to verify
+     * passes without testing anything. Zero leaves the older crash task alone; the journal tasks set
+     * it to one, so a set of iterations that never once exercised the gap-coverage property is a
+     * failure and not a quiet success.
+     */
+    @get:Input
+    @get:Optional
+    abstract val minLossyIterations: Property<Int>
+
     @get:Internal
     abstract val serverCacheDirectory: DirectoryProperty
 
@@ -107,6 +119,7 @@ abstract class CrashInjectionTask : DefaultTask() {
         val timeout = timeoutSeconds.getOrElse(420).toLong()
         val outcomes = mutableListOf<String>()
         val failures = mutableListOf<String>()
+        var lossyIterations = 0
 
         repeat(iterations.get()) { iteration ->
             val dir = runDirectory.get().asFile.resolve("iteration-$iteration")
@@ -141,21 +154,38 @@ abstract class CrashInjectionTask : DefaultTask() {
                 timeoutSeconds = timeout,
             )
             val (passed, text) = ServerRuntime.readResult(dir.resolve("harness-result.json"))
-            outcomes += """{"iteration": $iteration, "killDelayMs": $delay, "verified": $passed}"""
+            val resultFile = dir.resolve("harness-result.json")
+            val lossy = ServerRuntime.readDetail(resultFile, "crash.lossy") == "true"
+            val inconclusive = ServerRuntime.readDetail(resultFile, "crash.inconclusive")
+            if (lossy) {
+                lossyIterations++
+            }
+            outcomes += """{"iteration": $iteration, "killDelayMs": $delay, "verified": $passed, "lossy": $lossy}"""
             if (!passed || verifyRun.exitCode != 0) {
                 failures += "iteration $iteration (killed after ${delay}ms): $text\n${verifyRun.describe()}"
+            } else if (inconclusive != null) {
+                logger.lifecycle("Iteration $iteration: killed after ${delay}ms, inconclusive - $inconclusive")
             } else {
-                logger.lifecycle("Iteration $iteration: killed after ${delay}ms, restart verified")
+                logger.lifecycle("Iteration $iteration: killed after ${delay}ms, restart verified, lost events covered")
             }
         }
 
-        writeReport(outcomes, failures)
+        val required = minLossyIterations.getOrElse(0)
+        if (failures.isEmpty() && lossyIterations < required) {
+            // Everything passed, and that is the problem: nothing was ever lost, so the property
+            // this task exists to check was never once evaluated.
+            failures += "no iteration lost an event ($lossyIterations of $required required), so the gap-coverage" +
+                " property was never exercised. Every kill landed between ticks. This is not a pass; re-run, and" +
+                " if it persists the writing scenario is no longer staging work when the kill arrives."
+        }
+
+        writeReport(outcomes, failures, lossyIterations)
         if (failures.isNotEmpty()) {
             throw GradleException("Crash injection failed:\n" + failures.joinToString("\n\n"))
         }
     }
 
-    private fun writeReport(outcomes: List<String>, failures: List<String>) {
+    private fun writeReport(outcomes: List<String>, failures: List<String>, lossyIterations: Int) {
         val file: File = report.get().asFile
         file.parentFile.mkdirs()
         file.writeText(
@@ -167,6 +197,8 @@ abstract class CrashInjectionTask : DefaultTask() {
               "iterations": ${iterations.get()},
               "killDelayRangeMs": [${minKillDelayMillis.get()}, ${maxKillDelayMillis.get()}],
               "outcomes": [${outcomes.joinToString(", ")}],
+              "lossyIterations": $lossyIterations,
+              "minLossyIterations": ${minLossyIterations.getOrElse(0)},
               "failures": ${failures.size}
             }
 

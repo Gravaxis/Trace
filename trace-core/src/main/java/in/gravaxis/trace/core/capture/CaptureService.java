@@ -57,6 +57,7 @@ public final class CaptureService implements AutoCloseable {
     private final long maxClockDriftMillis;
     private final AtomicInteger nextSlot = new AtomicInteger();
     private final List<MappedEventRing> rings = new CopyOnWriteArrayList<>();
+    private final List<Producer> liveProducers = new CopyOnWriteArrayList<>();
 
     private final AtomicLong captured = new AtomicLong();
     private final AtomicLong published = new AtomicLong();
@@ -90,6 +91,38 @@ public final class CaptureService implements AutoCloseable {
     /** Every ring in use, for the consumer to drain and for recovery to replay. */
     public List<MappedEventRing> rings() {
         return List.copyOf(rings);
+    }
+
+    /**
+     * The oldest capture time still held in staging anywhere, or {@link Long#MAX_VALUE} if nothing
+     * is staged.
+     *
+     * <p>This is what bounds a crash gap from below. A staged record has not reached a ring, a
+     * journal or the store, so a crash takes it; and because each producer stages independently, a
+     * record staged on one region thread can be older than everything another thread has already
+     * journalled. A gap that began at the newest journalled capture time would start <em>after</em>
+     * an event it has to cover, which is worse than having no gap at all: a rollback would run over
+     * that moment believing the history complete.
+     *
+     * <p>Read by the consumer thread, written by producers. The value is a snapshot and may be
+     * stale by the time it is used, but only in the safe direction: a producer that stages after
+     * this returns is captured in a later frame's mark, and a producer that confirms after it only
+     * makes the mark wider than it needed to be.
+     */
+    public long oldestStagedMillis() {
+        long oldest = Long.MAX_VALUE;
+        for (Producer producer : producers()) {
+            long staged = producer.oldestStagedMillis;
+            if (staged < oldest) {
+                oldest = staged;
+            }
+        }
+        return oldest;
+    }
+
+    /** Every producer, for the consumer to ask about staging. */
+    private List<Producer> producers() {
+        return List.copyOf(liveProducers);
     }
 
     /**
@@ -225,7 +258,9 @@ public final class CaptureService implements AutoCloseable {
             MappedEventRing ring =
                     MappedEventRing.open(ringDirectory.resolve("r-%02d.ring".formatted(slot)), slot, ringCapacity);
             rings.add(ring);
-            return new Producer(ring, new SlotClock(slot, maxClockDriftMillis));
+            Producer producer = new Producer(ring, new SlotClock(slot, maxClockDriftMillis));
+            liveProducers.add(producer);
+            return producer;
         } catch (IOException e) {
             throw new IllegalStateException("Could not open the capture ring for slot " + slot, e);
         }
@@ -276,6 +311,15 @@ public final class CaptureService implements AutoCloseable {
         private final long[] capturedAt = new long[STAGING_CAPACITY];
         private int staged;
 
+        /**
+         * The capture time of the oldest record staged here, or {@link Long#MAX_VALUE} for none.
+         *
+         * <p>Volatile because the consumer thread reads it while this producer's thread writes it.
+         * Written twice per tick rather than per record: once when staging starts, once when it
+         * empties.
+         */
+        private volatile long oldestStagedMillis = Long.MAX_VALUE;
+
         Producer(MappedEventRing ring, SlotClock clock) {
             this.ring = ring;
             this.clock = clock;
@@ -285,6 +329,9 @@ public final class CaptureService implements AutoCloseable {
                 int worldId, int x, int y, int z, int before, int actorId, int cause, int kind, long capturedMillis) {
             if (staged == STAGING_CAPACITY) {
                 return false;
+            }
+            if (staged == 0) {
+                oldestStagedMillis = capturedMillis;
             }
             int index = staged++;
             worldIds[index] = worldId;
@@ -313,6 +360,7 @@ public final class CaptureService implements AutoCloseable {
                 }
             }
             staged = 0;
+            oldestStagedMillis = Long.MAX_VALUE;
         }
 
         void flushUnconfirmed(CaptureService service) {
@@ -321,6 +369,7 @@ public final class CaptureService implements AutoCloseable {
                 publishStaged(service, i, befores[i]);
             }
             staged = 0;
+            oldestStagedMillis = Long.MAX_VALUE;
         }
 
         private void publishStaged(CaptureService service, int index, int after) {
