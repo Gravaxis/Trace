@@ -71,10 +71,10 @@ public record BlockBox(int minX, int minY, int minZ, int maxX, int maxY, int max
     }
 
     private static int clampHorizontal(long value) {
-        return (int) Math.clamp(value, EventRecords.MIN_HORIZONTAL, EventRecords.MAX_HORIZONTAL);
+        return Math.clamp(value, EventRecords.MIN_HORIZONTAL, EventRecords.MAX_HORIZONTAL);
     }
 
     private static int clampVertical(long value) {
-        return (int) Math.clamp(value, EventRecords.MIN_Y, EventRecords.MAX_Y);
+        return Math.clamp(value, EventRecords.MIN_Y, EventRecords.MAX_Y);
     }
 }
