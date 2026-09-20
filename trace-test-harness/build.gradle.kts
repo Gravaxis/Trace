@@ -222,5 +222,8 @@ tasks.register("crashJournalTest") {
 tasks.register("benchmarkScenarios") {
   group = "verification"
   description = "Every server-side benchmark and durability scenario."
-  dependsOn(benchmarkPaper, benchmarkFolia, crashTest)
+  // The journal crash tasks are here so that one `./gradlew benchmark` produces every piece of
+  // evidence the README publishes, including the durability gate, rather than leaving the most
+  // important one to a command nobody remembers to run.
+  dependsOn(benchmarkPaper, benchmarkFolia, crashTest, crashJournalPaper, crashJournalFolia)
 }
