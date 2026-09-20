@@ -9,7 +9,7 @@
 package in.gravaxis.trace.runtime;
 
 import in.gravaxis.trace.capture.BlockCaptureListener;
-import in.gravaxis.trace.capture.CaptureService;
+import in.gravaxis.trace.core.capture.CaptureService;
 import in.gravaxis.trace.core.journal.JournalFrames;
 import in.gravaxis.trace.core.journal.JournalReader;
 import in.gravaxis.trace.core.journal.JournalWriter;
@@ -389,10 +389,7 @@ public final class TraceRuntime implements AutoCloseable {
         } catch (IOException e) {
             logger.warn("Could not close the journal cleanly: {}", e.getMessage());
         }
-        for (MappedEventRing ring : capture.rings()) {
-            ring.force();
-            ring.close();
-        }
+        capture.close();
         try {
             store.close();
         } catch (StoreException e) {

@@ -19,8 +19,14 @@ import java.util.List;
  * which streams.
  *
  * <p>Implementations are single-writer: one server per data directory (the build spec is explicit
- * that this constraint belongs on page one of the documentation, not in a footnote). Reads may run
- * from any thread.
+ * that this constraint belongs on page one of the documentation, not in a footnote).
+ *
+ * <p><strong>Every method here may be called from any thread.</strong> That is not a courtesy: the
+ * pipeline appends from its consumer thread while a rollback scans from the async scheduler and a
+ * command asks for {@link #stats()}, so an implementation that is merely single-writer-by-convention
+ * will corrupt a transaction sooner or later. Implementations serialise internally; a
+ * {@link MutationCursor} handed back to a caller is not shared and is used by one thread at a
+ * time.
  */
 public interface EventStore extends AutoCloseable {
 

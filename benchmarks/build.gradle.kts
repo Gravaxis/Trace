@@ -16,6 +16,9 @@ description =
 val jmh: SourceSet = sourceSets.create("jmh")
 
 dependencies {
+  // The harness in the main source set drives the real capture path, so it needs the module that
+  // holds it. Gate P1 measuring a stand-in was the defect this dependency removes.
+  implementation(project(":trace-core"))
   "jmhImplementation"(libs.jmh.core)
   "jmhAnnotationProcessor"(libs.jmh.generator)
   "jmhImplementation"(project(":trace-core"))
@@ -70,7 +73,8 @@ val checkAllocationGate = tasks.register<AllocationGateTask>("checkAllocationGat
   zeroAllocationBenchmarks.set(
     listOf(
       "in.gravaxis.trace.bench.BaselineBenchmark.emptyBaseline",
-      "in.gravaxis.trace.bench.BaselineBenchmark.encodeIntoPreallocatedBuffer",
+      "in.gravaxis.trace.bench.CaptureBenchmark.captureRejectedAtTickEnd",
+      "in.gravaxis.trace.bench.CaptureBenchmark.capturePublishedToRing",
     )
   )
   // The control proves the profiler is awake. See ADR-0009 for why the threshold is not literally

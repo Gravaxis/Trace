@@ -6,7 +6,7 @@
  * Additional permission under GNU GPL version 3 section 7: see LICENSE-EXCEPTION.md.
  */
 
-package in.gravaxis.trace.capture;
+package in.gravaxis.trace.core.capture;
 
 import in.gravaxis.trace.core.record.EventRecords;
 import in.gravaxis.trace.core.ring.MappedEventRing;
@@ -38,21 +38,23 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>No Bukkit types appear here: the world is reached through {@link StateReader}, so the whole
  * capture path can be tested without a server.
  */
-public final class CaptureService {
+public final class CaptureService implements AutoCloseable {
 
     /** Producer slots; beyond this a thread shares the last one. */
     public static final int MAX_SLOTS = 32;
 
     /** Records a thread can stage within one tick before the rest are published unconfirmed. */
-    private static final int STAGING_CAPACITY = 4096;
+    public static final int STAGING_CAPACITY = 4096;
 
-    private static final long MAX_CLOCK_DRIFT_MILLIS = 2;
+    /** How far the slot clock may run ahead of wall time before a record is dropped. */
+    public static final long DEFAULT_MAX_CLOCK_DRIFT_MILLIS = 2;
 
     /** Returned by a {@link StateReader} when the position cannot be read right now. */
     public static final int UNKNOWN_STATE = -1;
 
     private final Path ringDirectory;
     private final int ringCapacity;
+    private final long maxClockDriftMillis;
     private final AtomicInteger nextSlot = new AtomicInteger();
     private final List<MappedEventRing> rings = new CopyOnWriteArrayList<>();
 
@@ -60,15 +62,29 @@ public final class CaptureService {
     private final AtomicLong published = new AtomicLong();
     private final AtomicLong rejectedUnchanged = new AtomicLong();
     private final AtomicLong unconfirmed = new AtomicLong();
-    private final AtomicLong dropped = new AtomicLong();
+    private final AtomicLong droppedSlotOverflow = new AtomicLong();
+    private final AtomicLong droppedRingFull = new AtomicLong();
     private final AtomicLong outOfRange = new AtomicLong();
     private final AtomicLong slotsExhausted = new AtomicLong();
 
     private final ThreadLocal<Producer> producers = ThreadLocal.withInitial(this::newProducer);
 
     public CaptureService(Path ringDirectory, int ringCapacity) {
+        this(ringDirectory, ringCapacity, DEFAULT_MAX_CLOCK_DRIFT_MILLIS);
+    }
+
+    /**
+     * As above, with the clock's drift bound chosen by the caller.
+     *
+     * <p>The bound exists as a parameter for one reason: a benchmark that publishes as fast as the
+     * machine allows exhausts a two-millisecond bound almost immediately and then measures the drop
+     * branch while claiming to measure publishing. Raising it lets the measurement traverse the path
+     * it names. Production uses {@link #DEFAULT_MAX_CLOCK_DRIFT_MILLIS} and nothing else does.
+     */
+    public CaptureService(Path ringDirectory, int ringCapacity, long maxClockDriftMillis) {
         this.ringDirectory = ringDirectory;
         this.ringCapacity = ringCapacity;
+        this.maxClockDriftMillis = maxClockDriftMillis;
     }
 
     /** Every ring in use, for the consumer to drain and for recovery to replay. */
@@ -133,7 +149,7 @@ public final class CaptureService {
         if (stamp == SlotClock.OVERFLOW) {
             // The slot's clock would have to drift further than ordering allows. Dropping is
             // honest; misdating the record would corrupt the order history is read in.
-            dropped.incrementAndGet();
+            droppedSlotOverflow.incrementAndGet();
             producer.ring.countDrop();
             return;
         }
@@ -146,7 +162,7 @@ public final class CaptureService {
         } else {
             // M2 has no spill segment yet, so a full ring means a dropped record and a gap. The gap
             // is what makes a later rollback over this window refuse instead of guessing.
-            dropped.incrementAndGet();
+            droppedRingFull.incrementAndGet();
             producer.ring.countDrop();
         }
     }
@@ -168,8 +184,25 @@ public final class CaptureService {
         return unconfirmed.get();
     }
 
+    /** Records lost, for whatever reason. Each one has to be covered by a gap. */
     public long dropped() {
-        return dropped.get();
+        return droppedSlotOverflow.get() + droppedRingFull.get();
+    }
+
+    /**
+     * Dropped because the slot's clock could not stamp them in order.
+     *
+     * <p>Split from {@link #droppedRingFull()} because they mean different things and need
+     * different fixes — and because a test that says it exercises one of them has no way to prove
+     * it against a single merged counter.
+     */
+    public long droppedSlotOverflow() {
+        return droppedSlotOverflow.get();
+    }
+
+    /** Dropped because the producer's ring had no room and there is no spill segment yet. */
+    public long droppedRingFull() {
+        return droppedRingFull.get();
     }
 
     public long outOfRange() {
@@ -192,9 +225,24 @@ public final class CaptureService {
             MappedEventRing ring =
                     MappedEventRing.open(ringDirectory.resolve("r-%02d.ring".formatted(slot)), slot, ringCapacity);
             rings.add(ring);
-            return new Producer(ring, new SlotClock(slot, MAX_CLOCK_DRIFT_MILLIS));
+            return new Producer(ring, new SlotClock(slot, maxClockDriftMillis));
         } catch (IOException e) {
             throw new IllegalStateException("Could not open the capture ring for slot " + slot, e);
+        }
+    }
+
+    /**
+     * Forces and unmaps every ring.
+     *
+     * <p>Present because a mapped file cannot be deleted on Windows while the mapping is live, so a
+     * test using a temporary directory needs a way to let go. The server's shutdown path uses it
+     * too, rather than repeating the loop.
+     */
+    @Override
+    public void close() {
+        for (MappedEventRing ring : rings) {
+            ring.force();
+            ring.close();
         }
     }
 
@@ -203,8 +251,10 @@ public final class CaptureService {
     public interface StateReader {
 
         /**
-         * @return the interned state id at this position, or {@link #UNKNOWN_STATE} if it cannot be
-         *     read from the calling thread
+         * Reads the interned state at a position.
+         *
+         * @return the interned state id, or {@link #UNKNOWN_STATE} if it cannot be read from the
+         *     calling thread
          */
         int stateAt(int worldId, int x, int y, int z);
     }

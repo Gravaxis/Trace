@@ -8,7 +8,7 @@
 
 package in.gravaxis.trace.rollback;
 
-import in.gravaxis.trace.capture.CaptureService;
+import in.gravaxis.trace.core.capture.CaptureService;
 import in.gravaxis.trace.core.geom.BlockBox;
 import in.gravaxis.trace.core.geom.Morton;
 import in.gravaxis.trace.core.record.Cause;

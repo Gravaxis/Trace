@@ -8,6 +8,7 @@
 
 package in.gravaxis.trace.bench;
 
+import in.gravaxis.trace.core.record.EventRecords;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -24,11 +25,12 @@ import org.openjdk.jmh.annotations.Warmup;
  * Establishes what "zero allocation" measures as on this machine, and proves the measurement can see
  * an allocation when there is one.
  *
- * <p>Gate P1 requires the capture path to allocate nothing. Before any capture path exists, this
- * benchmark answers the prior question: what does JMH's GC profiler report for code that provably
- * allocates nothing? {@link #emptyBaseline()} is the floor, {@link #encodeIntoPreallocatedBuffer()}
- * is the shape the real encoder will have, and {@link #allocatingReference()} is the control that
- * must <em>not</em> read as zero — a green gate over a broken profiler would be worse than no gate.
+ * <p>Gate P1 requires the capture path to allocate nothing, and {@link CaptureBenchmark} measures
+ * that path. This benchmark answers the prior question the gate's threshold rests on: what does
+ * JMH's GC profiler report for code that provably allocates nothing, and can it see an allocation
+ * when there is one? {@link #emptyBaseline()} is the floor and {@link #allocatingReference()} is
+ * the control, which must <em>not</em> read as zero — a green gate over a broken profiler would be
+ * worse than no gate.
  *
  * <p>See docs/decisions/0009-allocation-gate.md for what the measurements came out as.
  */
@@ -40,16 +42,13 @@ import org.openjdk.jmh.annotations.Warmup;
 @Measurement(iterations = 5, time = 1)
 public class BaselineBenchmark {
 
-    private static final int CAPACITY = 1 << 12;
+    /** Longs per record, so the control allocates exactly what one record would. */
+    private static final int LONGS_PER_RECORD = EventRecords.LONGS;
 
-    private long[] buffer;
-    private int cursor;
     private int counter;
 
     @Setup
     public void setUp() {
-        buffer = new long[CAPACITY * AllocationProbe.LONGS_PER_RECORD];
-        cursor = 0;
         counter = 0;
     }
 
@@ -59,20 +58,13 @@ public class BaselineBenchmark {
         return counter++;
     }
 
-    /** The shape of the capture hot path: four longs into a preallocated slot. */
-    @Benchmark
-    public int encodeIntoPreallocatedBuffer() {
-        cursor = AllocationProbe.encodeInto(buffer, cursor, counter++);
-        return cursor;
-    }
-
     /**
      * The control. If the GC profiler ever reports this as zero, the gate is measuring nothing and
      * the other results mean nothing either.
      */
     @Benchmark
     public long[] allocatingReference() {
-        long[] record = new long[AllocationProbe.LONGS_PER_RECORD];
+        long[] record = new long[LONGS_PER_RECORD];
         record[0] = counter++;
         return record;
     }

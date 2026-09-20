@@ -50,6 +50,14 @@ import org.jspecify.annotations.Nullable;
  * transaction begins; if the server dies in between, the file is an orphan with no manifest row and
  * is deleted on the next start.
  *
+ * <p>Every method that touches the connection is {@code synchronized}. One JDBC connection cannot
+ * serve two threads at once, and this store already has several: the consumer thread appends and
+ * seals, a rollback reads gaps and opens scans from the async scheduler, and a command thread asks
+ * for statistics. Without the lock an {@code UPDATE} issued from one of them lands inside whatever
+ * transaction another has open, and {@code last_insert_rowid()} — which is per connection, not per
+ * statement — can return a row somebody else inserted. A scan holds the lock only while it chooses
+ * its shards; the cursor it returns reads through connections of its own and blocks nobody.
+ *
  * <p>One writer per data directory, enforced with a lock file. A network wanting shared history
  * runs an external tier — the build spec is explicit that this belongs on page one of the
  * documentation, not in a footnote.
@@ -188,7 +196,7 @@ public final class SqliteEventStore implements EventStore {
     }
 
     @Override
-    public void append(RecordBatch batch, long journalPosition) throws StoreException {
+    public synchronized void append(RecordBatch batch, long journalPosition) throws StoreException {
         if (batch.count() == 0) {
             return;
         }
@@ -238,12 +246,12 @@ public final class SqliteEventStore implements EventStore {
     }
 
     @Override
-    public long appliedLsn() {
+    public synchronized long appliedLsn() {
         return appliedLsn;
     }
 
     @Override
-    public long seal() throws StoreException {
+    public synchronized long seal() throws StoreException {
         try {
             long maxRowId;
             long minTs;
@@ -385,7 +393,7 @@ public final class SqliteEventStore implements EventStore {
     }
 
     @Override
-    public MutationCursor scan(ScanPlan plan) throws StoreException {
+    public synchronized MutationCursor scan(ScanPlan plan) throws StoreException {
         List<KeysetRowSource> sources = new ArrayList<>();
         List<AutoCloseable> owned = new ArrayList<>();
         try {
@@ -426,7 +434,7 @@ public final class SqliteEventStore implements EventStore {
     }
 
     @Override
-    public void recordGap(GapRecord gap) throws StoreException {
+    public synchronized void recordGap(GapRecord gap) throws StoreException {
         try (PreparedStatement insert = writer.prepareStatement(
                 "INSERT INTO gap(from_ts, to_ts, reason, dropped, detail) VALUES (?,?,?,?,?)")) {
             insert.setLong(1, gap.fromMillis());
@@ -441,7 +449,7 @@ public final class SqliteEventStore implements EventStore {
     }
 
     @Override
-    public List<GapRecord> gapsBetween(long fromMillis, long toMillis) throws StoreException {
+    public synchronized List<GapRecord> gapsBetween(long fromMillis, long toMillis) throws StoreException {
         List<GapRecord> gaps = new ArrayList<>();
         try (PreparedStatement statement = writer.prepareStatement(
                 "SELECT from_ts, to_ts, reason, dropped, detail FROM gap WHERE from_ts <= ? AND to_ts >= ?"
@@ -465,7 +473,7 @@ public final class SqliteEventStore implements EventStore {
     }
 
     @Override
-    public StoreStats stats() throws StoreException {
+    public synchronized StoreStats stats() throws StoreException {
         try (Statement statement = writer.createStatement()) {
             long hotRows;
             try (ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM " + HOT_SCHEMA + ".hot_event")) {
@@ -496,7 +504,7 @@ public final class SqliteEventStore implements EventStore {
     }
 
     @Override
-    public void close() throws StoreException {
+    public synchronized void close() throws StoreException {
         StoreException failure = null;
         try {
             try (Statement statement = writer.createStatement()) {

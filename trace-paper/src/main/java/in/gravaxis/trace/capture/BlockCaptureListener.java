@@ -9,6 +9,7 @@
 package in.gravaxis.trace.capture;
 
 import com.destroystokyo.paper.event.server.ServerTickEndEvent;
+import in.gravaxis.trace.core.capture.CaptureService;
 import in.gravaxis.trace.core.record.Cause;
 import in.gravaxis.trace.core.record.RecordKind;
 import in.gravaxis.trace.dictionary.ActorDictionary;

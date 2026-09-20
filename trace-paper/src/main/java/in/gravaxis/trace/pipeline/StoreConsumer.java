@@ -8,7 +8,7 @@
 
 package in.gravaxis.trace.pipeline;
 
-import in.gravaxis.trace.capture.CaptureService;
+import in.gravaxis.trace.core.capture.CaptureService;
 import in.gravaxis.trace.core.journal.JournalWriter;
 import in.gravaxis.trace.core.record.EventRecords;
 import in.gravaxis.trace.core.ring.MappedEventRing;
