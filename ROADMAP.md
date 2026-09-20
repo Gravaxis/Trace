@@ -7,7 +7,7 @@ and an unmet item is reported as unmet rather than carried quietly.
 |---|---|---|
 | M0 | Skeleton: modules, build, licences, a plugin that loads on Paper and Folia | **done** |
 | M1 | Benchmark and crash harness — built *before* any feature | **done** |
-| M2 | Walking skeleton: one event type captured with zero allocation, journalled, sealed into a shard, queried back, rolled back | **partly done** |
+| M2 | Walking skeleton: one event type captured with zero allocation, journalled, sealed into a shard, queried back, rolled back | **done** |
 | M3 | Storage engine: sharding, sealing, compaction, manifest, dictionaries, blobs, retention, purge, verify, quarantine | planned |
 | M4 | Full capture: every kind and cause, block entities, entities, containers, sessions | planned |
 | M5 | Mass edits: WorldEdit and FAWE hooks, section-diff patches, densification | planned |
@@ -49,38 +49,79 @@ Post-1.0: the web log browser, PostgreSQL and ClickHouse tiers, further importer
 * Tick percentiles from `ServerTickEndEvent` and post-GC heap sampling, because TPS is clamped at 20
   and peak heap without a collection is not a measurement.
 
-## What M2 has delivered, and what it has not
+## What M2 delivered
 
-Two of the four definition-of-done items pass. The other two do not, and M3 does not start until
-they do.
+All four definition-of-done items pass. Each is followed by what it does **not** establish, because
+a gate is only worth what it actually checks.
 
-**Passing.**
+**Capture, storage and rollback, end to end, on both platforms.**
+`./gradlew :trace-test-harness:integrationTest` boots Paper 26.2 build 126 and Folia 26.2 build 7 and
+runs two scenarios on each. The numbers come out identical on both: 46 events seen, 36 recorded, 10
+rejected as no-ops, 36 read back, 35 restored, 1 skipped because someone had changed that block
+afterwards, across 2 chunks. Break and place are both covered, and Trace's own rollback writes are
+recorded so a rollback can be rolled back.
 
-* Block breaks and places are captured at `MONITOR`, staged per thread, and confirmed against the
-  world at `ServerTickEndEvent` — so an event that changed nothing is never written
-  ([ADR-0014](docs/decisions/0014-log-changes-not-attempts.md)). The reported CoreProtect
-  lava-punch case is a scenario assertion: five break events at a block that does not break produce
-  five rejections and no history.
-* Capture → ring → journal → hot window → sealed shard → keyset scan → rollback runs end to end.
-  `./gradlew :trace-test-harness:integrationPaper` and `:integrationFolia` both pass, with the same
-  numbers on each: 46 events seen, 36 recorded, 10 rejected as no-ops, 36 scanned back, 35 applied,
-  1 skipped because someone had changed that block afterwards, across 2 chunks.
-* The Folia run genuinely spans two regions: the areas are 128 chunks apart, which is past the
-  boundary measured by asking the server's own `isOwnedByCurrentRegion` (see `provenance.md`). A
-  rollback's writes are themselves captured, so a rollback can be rolled back.
-* Gate P1 is green.
+The Folia run genuinely spans two regions. The areas are 128 chunks apart, which is past the
+boundary measured by asking the server's own `isOwnedByCurrentRegion` where its region ended; an
+earlier version used 40 chunks and tested one region twice while claiming two. Thread names cannot
+answer that question, because Folia services regions from a pool.
 
-**Not passing, and why it is listed here rather than quietly deferred.**
+*Not established:* the events are fired by the harness rather than by a connected client, so the
+server's own break path is not exercised. That is stated in every result this scenario produces, and
+a protocol-level client is the M4 answer.
 
-* **The allocation gate does not yet measure the capture path.** It measures a probe. Until it
-  points at the real encoder, "zero allocation on the tick thread" is a design claim, not a measured
-  one, and it is not written anywhere it could be read as measured.
-* **The crash rig does not yet shoot at Trace's journal.** It kills a server that is appending to
-  its own forced log and verifies that, which proves the rig works, not that Trace's recovery does.
-  The M2 requirement — every event lost to `kill -9` falls inside a recorded gap — is therefore
-  untested.
-* **An interrupted rollback does not resume.** There is no operation record and no resume cursor
-  yet; a rollback that is cut off leaves the world half-restored with nothing to continue from.
+**Gate P1, on the real encoder.**
+Both instruments now drive the same `CaptureService` the listener calls, over the two paths it has:
+a tick of events that changed nothing and are rejected at tick end, and a tick of real changes that
+are stamped, packed and written to the ring. The result is zero bytes, counted in whole bytes,
+under the normal JIT and again with escape analysis and C2 disabled. Every measurement asserts which
+branch it took, because a rejected position and a dropped record allocate nothing either.
+
+*Not established:* Bukkit's event dispatch, the dictionary lookups and the world read in the
+tick-end handler are not measured. Gate P1 covers the encoder, not the listener around it.
+[ADR-0009](docs/decisions/0009-allocation-gate.md) says so in the same words.
+
+**Every event lost to `kill -9` is covered by a gap.**
+`./gradlew :trace-test-harness:crashJournalTest` kills a server with SIGKILL while Trace is
+capturing, restarts it, and checks that every event the previous run wrote down and Trace does not
+have falls inside a recorded gap. Ground truth is written per event and before the event, and every
+event gets a position of its own so a loss cannot be masked by a later event at the same place.
+Kills at about three seconds lost between 108 and 957 events on the runs recorded here, and every
+one of them was inside the gap.
+
+A run that lost nothing verifies nothing, so the rig fails a set of iterations in which no iteration
+ever lost an event. That arm is not theoretical: one Folia iteration landed between ticks and was
+reported inconclusive rather than green.
+
+*Not established:* there is no asserted bound on *how much* a crash may lose. The gate checks
+coverage, not size, and no such bound is published. The losses above are observations of particular
+runs on one machine, not a guarantee.
+
+**An interrupted rollback resumes.**
+A rollback is now a durable operation: recorded before the first block is touched, checkpointed at
+each chunk boundary, marked finished only when it is, and reported at startup and by `/trace status`
+if it was not. `rollback-resume` cancels a running rollback, which stops it at a chunk boundary with
+work left, and then continues it: 40 of 240 positions in the first run, exactly the remaining 200 in
+the second, world verified block by block. See
+[ADR-0015](docs/decisions/0015-rollback-operations-and-resume.md).
+
+*Not established:* resuming after a real crash, as opposed to a cancellation, is not covered by a
+test. Nor is the cost of checkpointing, which is measured nowhere and claimed nowhere.
+
+### Defects this milestone found in its own earlier work
+
+Recorded because they are the argument for the harness existing, and because two of them were
+silent:
+
+* the journal's first frame was discarded on every run, because the store's "already applied"
+  watermark started at zero and the first frame lives at position zero;
+* reopening the journal truncated every frame written by previous runs, because a per-run salt was
+  being treated as end-of-log, and a unit test asserted that loss as intended behaviour;
+* a crash gap could start after an event it had to cover, because its lower bound was the newest
+  journalled capture rather than the low-water mark the frame header already carried;
+* the store served the consumer thread, a rollback and a command from one JDBC connection with no
+  lock;
+* and the gate said "zero allocation" about a hand-written stand-in for the encoder.
 
 ## Open questions carried forward
 
@@ -91,10 +132,15 @@ Tracked in the ADRs rather than here, but the ones that shape upcoming work:
   quiet loosening.
 * **M1** — how CI breaks a block with no player connected: an internal fake player, a protocol bot,
   or a synthetic event. Whichever wins, the limitation is documented with the result.
-* **M2** — five critical design defects found by adversarial review of the walking-skeleton design
-  (gap coverage after `kill -9`, the crash-window lower bound, the drop-to-gap fence before
-  planning, journal frame integrity, and block-entity capture on region threads) are fixed in ADRs
-  before the code is written.
+* **M2** (settled) — of the five critical design defects found by adversarial review of the
+  walking-skeleton design, four are fixed and tested: gap coverage after `kill -9`, the crash-window
+  lower bound, journal frame integrity, and the fence that drains and journals before a rollback
+  plans. The fifth, block-entity capture on region threads, is M4 work and until then a rollback
+  says plainly that container contents were not captured in this build.
+* **M2** (open) — a rollback interrupted by a real crash, rather than by a cancellation, is not
+  covered by a test, and neither is the cost of checkpointing. Both are named in
+  [ADR-0015](docs/decisions/0015-rollback-operations-and-resume.md) rather than left to be
+  discovered.
 * **M3** — SPIKE-2 (real bytes per event) needs a CoreProtect database. Without one, no
   storage-density number is published.
 * **M9** — the CoreProtect compatibility bridge needs classes in the `net.coreprotect` package, and

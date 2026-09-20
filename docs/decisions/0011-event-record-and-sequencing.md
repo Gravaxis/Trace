@@ -58,10 +58,15 @@ the ordering the primary key declares while keeping the row narrow.
 ## Consequences
 
 * The record is fixed-width, so a ring slot is an index rather than an allocation, and the encoder
-  has no branches that allocate. Gate P1 measures exactly this path.
-* 4,096 events per millisecond per thread is the ceiling before overflow. A single FAWE-scale burst
-  exceeds that easily, which is precisely why bulk edits become section patches (L3) rather than
-  rows; the overflow path exists so that the row path degrades honestly instead of lying about
+  has no branches that allocate. Gate P1 measures exactly this path, through the same
+  `CaptureService` entry points the server's listener calls; see ADR-0009.
+* 3,072 events per millisecond per thread is the ceiling before overflow: the sequence counter is
+  ten bits (1,023 stamps) and the clock may run up to two milliseconds ahead of wall time. This
+  paragraph said 4,096 until 2026-09-20, which was the record's own sequence width rather than the
+  number the clock will actually issue; the code has always done 3,072, and a unit test now pins
+  that the overflow path is reachable and counted separately from a full ring. A single FAWE-scale
+  burst exceeds it easily, which is precisely why bulk edits become section patches (L3) rather
+  than rows; the overflow path exists so that the row path degrades honestly instead of lying about
   ordering.
 * Block-state ids are Trace's own dense ids from a persisted dictionary keyed by the explicit state
   string plus data version — never the server's registry index, which is not stable across

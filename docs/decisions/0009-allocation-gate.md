@@ -64,6 +64,50 @@ instrument enforces it.
   and both instruments follow it. If the listener path (interning, blacklist lookup) cannot reach
   zero, that is a design problem to report, not a threshold to raise.
 
+## What it measures now (2026-09-20)
+
+`AllocationProbe` is gone. Both instruments drive the real `CaptureService` through the same two
+entry points the server's listener calls, `captureBlockChange` and `confirmStaged`. To make that
+possible the class moved from `trace-paper` to `trace-core`, which cost nothing because it never had
+a Bukkit type on it: the world is reached through a `StateReader`.
+
+That was a move rather than an extraction on purpose. A platform-free delegate that `CaptureService`
+called would leave two hot paths in the tree — the one the gate measures and the one the listener
+runs — and an allocation added to the wrapper would be invisible to a green gate. The gated bytecode
+and the called bytecode are now the same bytecode.
+
+Two paths are measured, because the class has exactly two and no third:
+
+* `captureRejectedAtTickEnd` — a tick of events that turn out to have changed nothing, staged and
+  then rejected at tick end. This is the ADR-0014 path.
+* `capturePublishedToRing` — a tick of real changes: staged, stamped by the slot clock, packed into
+  four longs and written into the memory-mapped ring.
+
+There is no way to stage without then confirming or flushing, so "staging alone" is not a measurable
+path and is not pretended to be one.
+
+**What is still not measured**, and must not be read as measured: Bukkit's event dispatch, the
+dictionary lookups that turn a `Material` and a `UUID` into ids, and the world read inside the
+tick-end handler. All three live in `trace-paper` and need a server. Gate P1 covers the encoder, not
+the listener around it.
+
+**Every measurement asserts which branch it took.** A reading of zero means nothing on its own: a
+position rejected as out of range, and a record dropped into a full ring, allocate nothing either.
+The tests therefore assert the counters as well as the bytes — every record rejected, or every
+record published with none dropped and none out of range. For the same reason the drop counter was
+split into slot-overflow and ring-full, which ADR-0012 had already asked for: one merged counter
+cannot tell a test which branch it exercised.
+
+One deliberate difference from production: the harness raises the slot clock's drift bound. A
+benchmark publishes far faster than any server, and at the production bound of two milliseconds
+almost every record would take the drop branch, so the benchmark would measure dropping while
+claiming to measure publishing. Nothing else about the path changes, and the tests assert that
+nothing was dropped.
+
+**Result, 2026-09-20, on the machine named in the results directory: zero bytes**, for both paths,
+under the normal JIT and again with escape analysis and C2 disabled. Not "below a threshold" —
+zero, counted in whole bytes by `ThreadMXBean`.
+
 ## Alternatives considered
 
 * **Keep `== 0.0` and let the build fail.** Rejected: it fails on correct code, so it would be

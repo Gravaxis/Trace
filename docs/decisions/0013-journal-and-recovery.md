@@ -93,6 +93,29 @@ LSN)`,** and a window's durable LSN advances only after a checkpoint that actual
 `PASSIVE` checkpoint blocked by a reader does nothing, and treating it as success would let the
 journal be recycled ahead of the data.
 
+### The crash gap's lower bound, 2026-09-20
+
+The frame header has always carried a low-water mark, and until now nothing read it. The gap a
+restart records after an unclean shutdown started at the newest capture timestamp the journal
+managed to write.
+
+That is the wrong bound, and wrong in the dangerous direction. Capture stages per thread and commits
+at tick end, so a region thread can still be holding a record older than everything another thread
+has already journalled. A gap beginning at the newest journalled capture would then start *after* an
+event it has to cover, and a rollback across that window would run believing the history complete —
+which is worse than having no gap at all, because a gap at least produces an honest refusal.
+
+So the mark now means what ADR-0012 said it meant: the oldest capture time that could still be
+missing. The capture layer tracks the oldest record staged on each producer, the consumer writes the
+minimum of that and the frame's own oldest record into every frame, the reader surfaces the last
+one, and recovery starts the gap there. Adding it cost one volatile write per tick per producer, and
+the allocation gate still reads zero.
+
+Proven by the durability gate (`crashJournalPaper`, `crashJournalFolia`): a server is killed with
+SIGKILL while Trace is capturing, and after the restart every event the previous run wrote down and
+Trace does not have must fall inside a recorded gap. The gate also fails a set of iterations in
+which nothing was ever lost, because a verification with nothing to verify is not a pass.
+
 ## Consequences
 
 * Two writes per event (journal, then store). That is the cost of not losing the last few seconds of
