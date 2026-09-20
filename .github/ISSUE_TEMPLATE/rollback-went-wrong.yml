@@ -1,0 +1,60 @@
+name: A rollback did something wrong
+description: The world came back different from what you expected after a rollback, restore or undo.
+title: "[rollback] "
+labels: ["rollback", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most important kind of bug report Trace can get, so it has its own form.
+        Please do not rename or delete anything in `plugins/Trace/` before filing — the operation
+        journal is what makes this diagnosable.
+  - type: input
+    id: operation-id
+    attributes:
+      label: Operation id
+      description: >
+        From `/trace status`, the command output, or the audit log. Every rollback, restore and undo
+        has one; with it we can see exactly which rows were touched.
+      placeholder: "e.g. 4f2a9c1e"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what you got
+      description: Be specific about blocks, coordinates and world.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: The exact command you ran
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: Output of `/trace status`
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Server and Trace versions
+      description: Output of `/version`, plus the Trace version.
+    validations:
+      required: true
+  - type: textarea
+    id: other-plugins
+    attributes:
+      label: Other plugins that touch blocks
+      description: WorldEdit, FAWE, protection plugins, other loggers, anything with a rollback.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: Warnings from Trace around the time of the operation, especially about gaps, skipped positions or capability probes.
+      render: text

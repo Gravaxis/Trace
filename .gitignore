@@ -1,0 +1,33 @@
+# Gradle. Anchored so that a source package named "build" is not swallowed.
+.gradle/
+/build/
+/*/build/
+/*/*/build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Build/run scratch
+run/
+.run-paper/
+out/
+
+# Test servers and downloaded server jars (never committed)
+.servers/
+*.jar.tmp
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local, machine-specific
+local.properties
+*.log
+*.hprof

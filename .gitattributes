@@ -1,0 +1,19 @@
+# Normalise line endings: LF in the repository, native in the working tree where it matters.
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+gradlew text eol=lf
+gradlew.bat text eol=crlf
+
+# Binary
+*.jar binary
+*.zip binary
+*.png binary
+*.gz binary
+*.zst binary
+*.db binary
+*.tshard binary
+
+# Generated benchmark results are text but never merged by hand.
+benchmarks/results/** -merge

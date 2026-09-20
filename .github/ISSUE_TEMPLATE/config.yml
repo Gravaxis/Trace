@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/gravaxis/trace/security/policy
+    about: Please report vulnerabilities privately, not as a public issue. See SECURITY.md.
+  - name: Question or idea
+    url: https://github.com/gravaxis/trace/discussions
+    about: Use discussions for questions, ideas and "does Trace log X?".

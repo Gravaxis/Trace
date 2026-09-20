@@ -1,0 +1,41 @@
+name: Bug report
+description: Something else in Trace behaves incorrectly.
+labels: ["needs triage"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest set of steps you can manage, ideally on a fresh server.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Server and Trace versions
+      description: Output of `/version`, plus the Trace version.
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: Output of `/trace status`
+      render: text
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant configuration
+      description: The parts of `plugins/Trace/config.yml` that relate to the problem.
+      render: yaml
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and stack traces
+      render: text

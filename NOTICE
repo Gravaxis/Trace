@@ -1,0 +1,17 @@
+Trace
+Copyright (C) 2026 Gravaxis (https://gravaxis.in)
+
+This product is distributed under two licences:
+
+  * trace-api (Maven coordinates in.gravaxis:trace-api) is licensed under the
+    Apache License, Version 2.0. See trace-api/LICENSE.
+
+  * Every other module — the implementation, the storage backends, the plugin
+    itself and the tooling — is licensed under the GNU General Public License,
+    version 3 or (at your option) any later version, with the additional
+    permission recorded in LICENSE-EXCEPTION.md. See COPYING.
+
+Trace is an independent project. It is not affiliated with, endorsed by, or
+derived from Mojang Studios, Microsoft, the PaperMC project, or the authors of
+any other server plugin. Product names, logos and trademarks mentioned in this
+repository belong to their respective owners.
