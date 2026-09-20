@@ -330,10 +330,11 @@ public abstract class EventStoreContract {
                 .extracting(RollbackOperation::id)
                 .containsExactly(id);
 
-        // A different run may pick it up; the run that owns it may not, because that one may still
-        // be working.
-        assertThat(found.isResumable("run-two")).isTrue();
-        assertThat(found.isResumable("run-one")).isFalse();
+        // It has work left, so it can be picked up. Whether something is running it right now is
+        // not the store's question: one server per data directory means the run that wrote this is
+        // gone, and a rollback of this run's own is tracked by the service running it.
+        assertThat(found.isResumable()).isTrue();
+        assertThat(found.runId()).isEqualTo("run-one");
 
         store.finishOperation(id, OperationState.DONE, new OperationProgress(4, 0, 1, 4, 1));
         assertThat(store.unfinishedOperations()).isEmpty();

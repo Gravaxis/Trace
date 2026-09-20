@@ -167,6 +167,23 @@ public final class Trace extends JavaPlugin implements TraceApi {
     }
 
     /**
+     * Asks a running rollback to stop at its next chunk boundary.
+     *
+     * <p>A seam for the harness, which needs a rollback that really was interrupted in order to
+     * test that resuming one works. Cancelling is per operation, so this cannot stop a different
+     * rollback that happens to be running.
+     */
+    @ApiStatus.Internal
+    public String cancelRollback(long operationId) {
+        TraceRuntime current = runtime;
+        if (current == null) {
+            return "refused: Trace is not running";
+        }
+        current.rollback().cancel(operationId);
+        return "cancelling " + operationId;
+    }
+
+    /**
      * One line per rollback that still has work left: {@code id state applied scanned}.
      *
      * <p>A seam for the harness, and the shape {@code /trace status} reports.

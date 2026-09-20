@@ -23,8 +23,8 @@ import org.jspecify.annotations.Nullable;
  * wrote and start undoing its own work.
  *
  * @param id assigned by the store
- * @param runId the process instance that created it; a resume refuses an operation whose run id is
- *     the current process, because that one may still be running
+ * @param runId the process instance that created it, for the operator's benefit: it says which run
+ *     of the server started a rollback that was never finished
  * @param worldId the world, in Trace's own numbering
  * @param box the region being rolled back
  * @param fromMillis window start, inclusive
@@ -85,8 +85,16 @@ public record RollbackOperation(
                 updatedAtMillis);
     }
 
-    /** True when this operation has work left and nothing is known to be running it. */
-    public boolean isResumable(String currentRunId) {
-        return state.isResumable() && !runId.equals(currentRunId);
+    /**
+     * True when this operation has work a later run could pick up.
+     *
+     * <p>Says nothing about whether something is running it right now, and deliberately does not
+     * compare run ids. An operation left behind by another run cannot still be going: one server
+     * per data directory is enforced by a lock file, so the process that wrote it is gone. An
+     * operation of this run's own may well be going, and the only thing that knows is the service
+     * running it, which keeps its own set.
+     */
+    public boolean isResumable() {
+        return state.isResumable();
     }
 }

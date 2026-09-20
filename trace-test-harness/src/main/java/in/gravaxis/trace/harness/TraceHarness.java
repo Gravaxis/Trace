@@ -15,6 +15,7 @@ import in.gravaxis.trace.harness.scenarios.CrashJournalVerifyScenario;
 import in.gravaxis.trace.harness.scenarios.CrashJournalWriteScenario;
 import in.gravaxis.trace.harness.scenarios.CrashVerifyScenario;
 import in.gravaxis.trace.harness.scenarios.CrashWriteScenario;
+import in.gravaxis.trace.harness.scenarios.RollbackResumeScenario;
 import io.papermc.paper.ServerBuildInfo;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -59,7 +60,8 @@ public final class TraceHarness extends JavaPlugin {
             Map.entry("crash-write", new CrashWriteScenario()),
             Map.entry("crash-verify", new CrashVerifyScenario()),
             Map.entry("crash-journal-write", new CrashJournalWriteScenario()),
-            Map.entry("crash-journal-verify", new CrashJournalVerifyScenario()));
+            Map.entry("crash-journal-verify", new CrashJournalVerifyScenario()),
+            Map.entry("rollback-resume", new RollbackResumeScenario()));
 
     @Override
     public void onEnable() {

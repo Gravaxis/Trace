@@ -51,6 +51,7 @@ public final class TracePluginBridge {
             // Seams a given Trace build may not have. A scenario that needs one says so by name and
             // fails with that sentence, rather than with a reflection stack trace.
             put(optional, plugin, "resumeRollback", long.class);
+            put(optional, plugin, "cancelRollback", long.class);
             put(optional, plugin, "unfinishedRollbacks");
             put(optional, plugin, "gapsBetween", long.class, long.class);
             put(

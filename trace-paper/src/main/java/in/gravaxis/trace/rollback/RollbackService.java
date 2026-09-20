@@ -84,7 +84,7 @@ public final class RollbackService {
     private final WorldDictionary worlds;
     private final BlockStateDictionary states;
 
-    /** This process. An operation stamped with it may still be running, so it is not resumable. */
+    /** This process, stamped on the operations it starts so an operator can tell runs apart. */
     private final String runId;
 
     /** Operations this process is running right now, so a resume cannot race one. */
@@ -152,9 +152,9 @@ public final class RollbackService {
      * Continues an operation a previous run did not finish.
      *
      * <p>Refuses rather than guesses in every case where continuing could be wrong: an operation
-     * that is already finished, one this process is running right now, one stamped with this run's
-     * id (which means the process that owns it is this one, so it may still be working), or one
-     * whose world is no longer loaded.
+     * that is already finished, one this process is running right now, or one whose world is no
+     * longer loaded. An operation left behind by an earlier run needs no such check, because one
+     * server per data directory means the run that started it is gone.
      */
     public RollbackSummary resume(long operationId) throws StoreException {
         RollbackOperation operation = store.operation(operationId);
@@ -164,9 +164,8 @@ public final class RollbackService {
         if (!operation.state().isResumable()) {
             return RollbackSummary.refused("Rollback " + operationId + " already finished (" + operation.state() + ")");
         }
-        if (!operation.isResumable(runId)) {
-            return RollbackSummary.refused(
-                    "Rollback " + operationId + " belongs to this run of the server and may still be going");
+        if (running.contains(operationId)) {
+            return RollbackSummary.refused("Rollback " + operationId + " is running right now");
         }
         World world = worlds.worldOf(operation.worldId());
         if (world == null) {

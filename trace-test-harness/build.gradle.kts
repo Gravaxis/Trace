@@ -104,10 +104,14 @@ val smokeFolia = registerScenario("smokeFolia", "folia", "boot", 25592)
 val integrationPaper = registerScenario("integrationPaper", "paper", "block-break-rollback", 25596)
 val integrationFolia = registerScenario("integrationFolia", "folia", "block-break-rollback", 25597)
 
+// An interrupted rollback continues from where it stopped, also part of the M2 definition of done.
+val resumePaper = registerScenario("resumePaper", "paper", "rollback-resume", 25598)
+val resumeFolia = registerScenario("resumeFolia", "folia", "rollback-resume", 25599)
+
 tasks.register("integrationTest") {
   group = "verification"
   description = "Breaks blocks, stores the history and rolls it back, on Paper and on Folia."
-  dependsOn(integrationPaper, integrationFolia)
+  dependsOn(integrationPaper, integrationFolia, resumePaper, resumeFolia)
 }
 
 tasks.register("smokeTest") {
