@@ -19,6 +19,8 @@ dependencies {
   // The harness in the main source set drives the real capture path, so it needs the module that
   // holds it. Gate P1 measuring a stand-in was the defect this dependency removes.
   implementation(project(":trace-core"))
+  implementation(project(":trace-storage-sqlite"))
+  implementation(libs.sqlite.jdbc)
   "jmhImplementation"(libs.jmh.core)
   "jmhAnnotationProcessor"(libs.jmh.generator)
   "jmhImplementation"(project(":trace-core"))
@@ -132,4 +134,25 @@ tasks.register("benchmark") {
   group = "verification"
   description = "Runs every benchmark and writes a results directory."
   dependsOn(benchmarkReport)
+}
+
+// Private inputs are neither copied nor fingerprinted by Gradle. Reports contain aggregates only.
+tasks.register<JavaExec>("storageDensity") {
+  group = "verification"
+  description = "Measures SQLite page accounting using aggregates only; boots no server."
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("in.gravaxis.trace.bench.StorageDensity")
+  javaLauncher.set(javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(libs.versions.java.get().toInt()))
+  })
+  val privateInput = providers.gradleProperty("trace.density.input").orElse("")
+  val output = layout.buildDirectory.file("density/report.json")
+  val scratch = layout.buildDirectory.dir("density/work")
+  outputs.file(output)
+  outputs.upToDateWhen { false }
+  argumentProviders.add(CommandLineArgumentProvider {
+    listOf(privateInput.get(), output.get().asFile.absolutePath,
+      scratch.get().asFile.absolutePath)
+  })
+  maxHeapSize = "1g"
 }
