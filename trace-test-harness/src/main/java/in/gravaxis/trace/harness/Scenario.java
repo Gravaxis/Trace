@@ -8,24 +8,28 @@
 
 package in.gravaxis.trace.harness;
 
-import org.bukkit.plugin.Plugin;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * One thing the harness can do to a running server.
  *
- * <p>A scenario runs on the global region scheduler after the server has finished loading, records
- * what it observed on the {@link HarnessResult}, and returns. The harness writes the result and
- * shuts the server down; the build reads it.
+ * <p>A scenario starts on the global region scheduler once the server has loaded, and completes the
+ * returned future when it is finished. Work that spans ticks schedules itself through the region,
+ * entity or async schedulers and completes the future at the end: nothing here may block a tick
+ * thread, on Paper or on Folia.
+ *
+ * <p>When the future completes, the harness writes the result and shuts the server down. A scenario
+ * that never completes is killed by the build's timeout and reported as a failure.
  */
 @FunctionalInterface
 public interface Scenario {
 
     /**
-     * Runs the scenario.
+     * Starts the scenario.
      *
-     * @param plugin the harness plugin, for scheduling and logging
-     * @param result collects assertions and facts
-     * @throws Exception anything thrown is recorded as a failure, never swallowed
+     * @param context the plugin, the parameters, and the result to fill in
+     * @return a future completed when the scenario is done; an exceptional completion is recorded
+     *     as a failure
      */
-    void run(Plugin plugin, HarnessResult result) throws Exception;
+    CompletableFuture<Void> run(ScenarioContext context);
 }

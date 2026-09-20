@@ -43,6 +43,10 @@ jobs:
       - name: Build, check and verify the module graph
         run: ./gradlew build verifyModuleGraph -Ptrace.testJvm=${{ matrix.test-jvm }} --stacktrace
 
+      - name: Verify the README benchmark table matches the committed results
+        if: matrix.test-jvm == '25'
+        run: ./gradlew :benchmarks:verifyReadmeTable
+
       - name: Publish trace-api to the local repository
         run: ./gradlew :trace-api:publishToMavenLocal
 

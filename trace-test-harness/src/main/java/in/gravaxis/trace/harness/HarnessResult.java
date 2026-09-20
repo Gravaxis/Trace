@@ -12,12 +12,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
- * What a scenario reports back to the build.
+ * What a scenario reports back to the build: assertions, facts, and measurements.
  *
- * <p>Deliberately hand-rolled JSON: the harness must not drag a serialization library onto a test
- * server, and the format is read by one Gradle task.
+ * <p>Deliberately hand-rolled JSON. The harness must not drag a serialization library onto a test
+ * server, and exactly one Gradle task reads the format.
  */
 public final class HarnessResult {
 
@@ -29,17 +30,35 @@ public final class HarnessResult {
         FAIL
     }
 
+    /**
+     * One measurement.
+     *
+     * @param name dotted metric name, for example {@code tick.p99}
+     * @param value the measured value
+     * @param unit {@code ms}, {@code bytes}, {@code count}, or null for a bare number
+     */
+    public record Metric(String name, double value, @Nullable String unit) {}
+
     private final String scenario;
+    private final Map<String, String> params;
     private final Map<String, String> details = new LinkedHashMap<>();
+    private final List<Metric> metrics = new ArrayList<>();
     private final List<String> failures = new ArrayList<>();
 
-    public HarnessResult(String scenario) {
+    public HarnessResult(String scenario, Map<String, String> params) {
         this.scenario = scenario;
+        this.params = new LinkedHashMap<>(params);
     }
 
     /** Records a fact about the run. Facts are reported whether the scenario passes or fails. */
     public HarnessResult detail(String key, Object value) {
         details.put(key, String.valueOf(value));
+        return this;
+    }
+
+    /** Records a measurement. Only measurements recorded here can ever reach the README. */
+    public HarnessResult metric(String name, double value, @Nullable String unit) {
+        metrics.add(new Metric(name, value, unit));
         return this;
     }
 
@@ -73,19 +92,26 @@ public final class HarnessResult {
         return List.copyOf(failures);
     }
 
-    /** The result as JSON, which is what the Gradle task parses. */
+    /** The result as JSON, which is what the Gradle tasks parse. */
     public String toJson() {
-        StringBuilder out = new StringBuilder(256);
+        StringBuilder out = new StringBuilder(512);
         out.append("{\n  \"scenario\": ").append(quote(scenario));
         out.append(",\n  \"status\": ").append(quote(status().name()));
-        out.append(",\n  \"details\": {");
-        boolean first = true;
-        for (Map.Entry<String, String> entry : details.entrySet()) {
-            out.append(first ? "\n    " : ",\n    ");
-            first = false;
-            out.append(quote(entry.getKey())).append(": ").append(quote(entry.getValue()));
+        appendStringMap(out, "params", params);
+        appendStringMap(out, "details", details);
+        out.append(",\n  \"metrics\": [");
+        for (int i = 0; i < metrics.size(); i++) {
+            Metric metric = metrics.get(i);
+            out.append(i == 0 ? "\n    " : ",\n    ");
+            out.append("{\"name\": ")
+                    .append(quote(metric.name()))
+                    .append(", \"value\": ")
+                    .append(number(metric.value()))
+                    .append(", \"unit\": ")
+                    .append(metric.unit() == null ? "null" : quote(metric.unit()))
+                    .append('}');
         }
-        out.append(details.isEmpty() ? "}" : "\n  }");
+        out.append(metrics.isEmpty() ? "]" : "\n  ]");
         out.append(",\n  \"failures\": [");
         for (int i = 0; i < failures.size(); i++) {
             out.append(i == 0 ? "\n    " : ",\n    ").append(quote(failures.get(i)));
@@ -93,6 +119,24 @@ public final class HarnessResult {
         out.append(failures.isEmpty() ? "]" : "\n  ]");
         out.append("\n}\n");
         return out.toString();
+    }
+
+    private static void appendStringMap(StringBuilder out, String name, Map<String, String> map) {
+        out.append(",\n  ").append(quote(name)).append(": {");
+        boolean first = true;
+        for (Map.Entry<String, String> entry : map.entrySet()) {
+            out.append(first ? "\n    " : ",\n    ");
+            first = false;
+            out.append(quote(entry.getKey())).append(": ").append(quote(entry.getValue()));
+        }
+        out.append(map.isEmpty() ? "}" : "\n  }");
+    }
+
+    private static String number(double value) {
+        if (value == Math.rint(value) && !Double.isInfinite(value) && Math.abs(value) < 1e15) {
+            return Long.toString((long) value);
+        }
+        return Double.toString(value);
     }
 
     private static String quote(String value) {

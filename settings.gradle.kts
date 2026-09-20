@@ -38,4 +38,5 @@ include(
   "trace-storage-sqlite",
   "trace-paper",
   "trace-test-harness",
+  "benchmarks",
 )

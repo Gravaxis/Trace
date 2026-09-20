@@ -28,6 +28,8 @@ tasks.withType<JavaCompile>().configureEach {
   options.compilerArgs.addAll(listOf("-Xlint:all,-serial,-processing", "-parameters"))
   options.errorprone {
     disableWarningsInGeneratedCode.set(true)
+    // Annotation-processor output (JMH's benchmark stubs) is not ours to fix.
+    excludedPaths.set(".*/build/generated/.*")
     check("NullAway", CheckSeverity.ERROR)
     option("NullAway:OnlyNullMarked", "true")
   }

@@ -8,13 +8,21 @@
 
 package in.gravaxis.trace.harness;
 
+import in.gravaxis.trace.harness.scenarios.BlockChurnScenario;
+import in.gravaxis.trace.harness.scenarios.BootScenario;
+import in.gravaxis.trace.harness.scenarios.CrashVerifyScenario;
+import in.gravaxis.trace.harness.scenarios.CrashWriteScenario;
+import io.papermc.paper.ServerBuildInfo;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import net.kyori.adventure.key.Key;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jspecify.annotations.Nullable;
@@ -22,23 +30,30 @@ import org.jspecify.annotations.Nullable;
 /**
  * Runs one scenario against a live server and reports the outcome to the build.
  *
- * <p>The scenario is chosen with {@code -Dtrace.harness.scenario=<name>}. With no property set the
- * harness stays idle, so the same jar can sit in a development server without doing anything.
+ * <p>The scenario is chosen with {@code -Dtrace.harness.scenario=<name>} and parameterised with
+ * {@code -Dtrace.harness.params=k=v,k=v}. With no scenario set the harness stays idle, so the same
+ * jar can sit in a development server doing nothing.
  *
- * <p>Everything here runs through the global region scheduler, which is the only scheduler that
- * behaves identically on Paper and on Folia — the harness has to be as Folia-correct as the plugin
- * it tests.
+ * <p>Everything starts on the global region scheduler, the one scheduler that behaves the same on
+ * Paper and on Folia: the harness has to be as Folia-correct as the plugin it tests.
  */
 public final class TraceHarness extends JavaPlugin {
 
-    private static final String SCENARIO_PROPERTY = "trace.harness.scenario";
-    private static final String RESULT_FILE = "harness-result.json";
-    private static final String MARKER = "[TRACE-HARNESS]";
+    /** Prefix the build watches for in the server log. */
+    public static final String MARKER = "[TRACE-HARNESS]";
 
-    /** Ticks to wait after enable so that the server finishes loading before a scenario starts. */
+    private static final String SCENARIO_PROPERTY = "trace.harness.scenario";
+    private static final String PARAMS_PROPERTY = "trace.harness.params";
+    private static final String RESULT_FILE = "harness-result.json";
+
+    /** Ticks to wait after enable so the server finishes loading before a scenario starts. */
     private static final long START_DELAY_TICKS = 20L;
 
-    private static final Map<String, Scenario> SCENARIOS = Map.of("boot", new BootScenario());
+    private static final Map<String, Scenario> SCENARIOS = Map.of(
+            "boot", new BootScenario(),
+            "block-churn", new BlockChurnScenario(),
+            "crash-write", new CrashWriteScenario(),
+            "crash-verify", new CrashVerifyScenario());
 
     @Override
     public void onEnable() {
@@ -48,27 +63,59 @@ public final class TraceHarness extends JavaPlugin {
             return;
         }
         getSLF4JLogger().info("Scenario '{}' queued.", scenario);
-        Bukkit.getGlobalRegionScheduler().runDelayed(this, task -> runScenario(scenario), START_DELAY_TICKS);
+        Bukkit.getGlobalRegionScheduler().runDelayed(this, task -> start(scenario), START_DELAY_TICKS);
     }
 
-    private void runScenario(String name) {
-        HarnessResult result = new HarnessResult(name);
+    private void start(String name) {
+        Map<String, String> params = parseParams(System.getProperty(PARAMS_PROPERTY, ""));
+        HarnessResult result = new HarnessResult(name, params);
+        describeServer(result);
+        ScenarioContext context =
+                new ScenarioContext(this, params, result, Path.of("").toAbsolutePath());
+
         Scenario scenario = SCENARIOS.get(name);
         if (scenario == null) {
             result.failure("Unknown scenario '" + name + "'. Known scenarios: " + SCENARIOS.keySet());
-        } else {
-            try {
-                scenario.run(this, result);
-            } catch (Throwable t) {
-                result.failure("Scenario threw " + t.getClass().getName() + ": " + t.getMessage());
-                result.detail("exception", stackTrace(t));
-            }
+            finish(result);
+            return;
         }
-        report(result);
-        Bukkit.shutdown();
+
+        CompletableFuture<Void> done;
+        try {
+            done = scenario.run(context);
+        } catch (Throwable t) {
+            record(result, t);
+            finish(result);
+            return;
+        }
+        var _ = done.whenComplete((ignored, throwable) -> {
+            if (throwable != null) {
+                record(result, throwable);
+            }
+            // Back to the global region thread: shutting down is global state.
+            Bukkit.getGlobalRegionScheduler().execute(this, () -> finish(result));
+        });
     }
 
-    private void report(HarnessResult result) {
+    /** Every result says which server produced it; a measurement without that is not evidence. */
+    private static void describeServer(HarnessResult result) {
+        ServerBuildInfo build = ServerBuildInfo.buildInfo();
+        result.detail("server.brand", build.brandName())
+                .detail("server.minecraftVersion", build.minecraftVersionId())
+                .detail("server.version", Bukkit.getVersion())
+                .detail("server.regionised", build.isBrandCompatible(Key.key("papermc", "folia")))
+                .detail("java.version", Runtime.version().toString())
+                .detail("heap.maxBytes", Runtime.getRuntime().maxMemory());
+    }
+
+    private static void record(HarnessResult result, Throwable t) {
+        result.failure("Scenario threw " + t.getClass().getName() + ": " + t.getMessage());
+        StringWriter writer = new StringWriter();
+        t.printStackTrace(new PrintWriter(writer));
+        result.detail("exception", writer.toString());
+    }
+
+    private void finish(HarnessResult result) {
         Path file = Path.of(RESULT_FILE).toAbsolutePath();
         @Nullable String writeFailure = null;
         try {
@@ -87,11 +134,20 @@ public final class TraceHarness extends JavaPlugin {
         if (writeFailure != null) {
             getSLF4JLogger().error("{} could not write {}: {}", MARKER, file, writeFailure);
         }
+        Bukkit.shutdown();
     }
 
-    private static String stackTrace(Throwable t) {
-        StringWriter writer = new StringWriter();
-        t.printStackTrace(new PrintWriter(writer));
-        return writer.toString();
+    private static Map<String, String> parseParams(String raw) {
+        Map<String, String> params = new LinkedHashMap<>();
+        if (raw.isBlank()) {
+            return params;
+        }
+        for (String pair : raw.split(",", -1)) {
+            int equals = pair.indexOf('=');
+            if (equals > 0) {
+                params.put(pair.substring(0, equals).trim(), pair.substring(equals + 1).trim());
+            }
+        }
+        return params;
     }
 }
