@@ -116,16 +116,24 @@ public record RollbackSummary(
             chunks++;
         }
 
-        public void applied() {
-            applied++;
+        /**
+         * Adds a chunk's worth of results at once.
+         *
+         * <p>Per chunk rather than per position, because the counting happens on a region thread
+         * and this builder belongs to the thread driving the scan. A region task that was given up
+         * on can still be running, and it must not be able to move a number that has already been
+         * written to the operation row.
+         */
+        public void applied(int count) {
+            applied += count;
         }
 
-        public void alreadyThere() {
-            alreadyAtTarget++;
+        public void alreadyThere(int count) {
+            alreadyAtTarget += count;
         }
 
-        public void mismatched() {
-            mismatched++;
+        public void mismatched(int count) {
+            mismatched += count;
         }
 
         /** A chunk whose region would not accept the work in time. */

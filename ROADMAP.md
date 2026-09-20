@@ -81,32 +81,45 @@ branch it took, because a rejected position and a dropped record allocate nothin
 tick-end handler are not measured. Gate P1 covers the encoder, not the listener around it.
 [ADR-0009](docs/decisions/0009-allocation-gate.md) says so in the same words.
 
-**Every event lost to `kill -9` is covered by a gap.**
+**Every event lost to the crash the gate injects is covered by a gap.**
 `./gradlew :trace-test-harness:crashJournalTest` kills a server with SIGKILL while Trace is
 capturing, restarts it, and checks that every event the previous run wrote down and Trace does not
 have falls inside a recorded gap. Ground truth is written per event and before the event, and every
 event gets a position of its own so a loss cannot be masked by a later event at the same place.
-Kills at about three seconds lost between 108 and 957 events on the runs recorded here, and every
-one of them was inside the gap.
 
 A run that lost nothing verifies nothing, so the rig fails a set of iterations in which no iteration
-ever lost an event. That arm is not theoretical: one Folia iteration landed between ticks and was
-reported inconclusive rather than green.
+ever lost an event. Each committed run records, per iteration, the kill delay, how many events the
+killed server had written down, how many Trace did not have, and whether the iteration was lossy at
+all: see `crash/` inside the newest directory under `benchmarks/results/`. Those files are the only
+place a figure about what a crash costs may be read from.
 
-*Not established:* there is no asserted bound on *how much* a crash may lose. The gate checks
-coverage, not size, and no such bound is published. The losses above are observations of particular
-runs on one machine, not a guarantee.
+*Not established, and each of these is a real hole rather than a formality:*
+
+* There is no asserted bound on *how much* a crash may lose. The gate checks coverage, not size.
+* The gate exercises one loss mode: records staged in memory when the kill lands. Two others now
+  produce a gap and neither is tested — a journal or store write that fails, and records capture had
+  to drop because a ring was full or the clock could not order them. Both were silent until
+  2026-09-20; the first even logged that the records were safe in the ring when they were already
+  gone.
+* Beyond 32 concurrent capture threads, records can be overwritten with no drop counted and so no
+  gap at all. That is a known defect with no fix yet, recorded in
+  [ADR-0012](docs/decisions/0012-capture-transport.md).
 
 **An interrupted rollback resumes.**
 A rollback is now a durable operation: recorded before the first block is touched, checkpointed at
 each chunk boundary, marked finished only when it is, and reported at startup and by `/trace status`
 if it was not. `rollback-resume` cancels a running rollback, which stops it at a chunk boundary with
-work left, and then continues it: 40 of 240 positions in the first run, exactly the remaining 200 in
-the second, world verified block by block. See
+work left, and then continues it. The scenario asserts what is deterministic: the first run restored
+some but not all of the 240 positions, the resumed run restored exactly the rest and ended `DONE`,
+and every position is `STONE` again when the world is read back block by block. The split between
+the two runs depends on when the cancellation lands and is not asserted or published. See
 [ADR-0015](docs/decisions/0015-rollback-operations-and-resume.md).
 
 *Not established:* resuming after a real crash, as opposed to a cancellation, is not covered by a
-test. Nor is the cost of checkpointing, which is measured nowhere and claimed nowhere.
+test. Nor is the cost of checkpointing, which is measured nowhere and claimed nowhere. A chunk whose
+region is too busy to accept the work is counted and left for a resume, and that path has no test
+either: it was also where a review found a rollback writing blocks the history never named, because
+a task the wait had given up on was still holding the fold's arrays.
 
 ### Defects this milestone found in its own earlier work
 
@@ -115,6 +128,11 @@ silent:
 
 * the journal's first frame was discarded on every run, because the store's "already applied"
   watermark started at zero and the first frame lives at position zero;
+* a rollback could write blocks no recorded change ever named: when a region did not accept a chunk
+  in time, the abandoned task kept a reference to the fold's arrays, which the next chunk then
+  overwrote;
+* a failed journal write lost its records and logged that they were safe, and dropped records never
+  became a gap at all, although the whole reason dropping is allowed is that it does;
 * reopening the journal truncated every frame written by previous runs, because a per-run salt was
   being treated as end-of-log, and a unit test asserted that loss as intended behaviour;
 * a crash gap could start after an event it had to cover, because its lower bound was the newest

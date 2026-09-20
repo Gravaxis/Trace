@@ -14,6 +14,7 @@ import in.gravaxis.trace.core.record.EventRecords;
 import in.gravaxis.trace.core.ring.MappedEventRing;
 import in.gravaxis.trace.core.time.TraceEpoch;
 import in.gravaxis.trace.storage.EventStore;
+import in.gravaxis.trace.storage.GapRecord;
 import in.gravaxis.trace.storage.RecordBatch;
 import in.gravaxis.trace.storage.StoreException;
 import java.io.IOException;
@@ -60,6 +61,10 @@ public final class StoreConsumer implements Runnable {
     private volatile long lastForceAt;
     private volatile long lastSealAt;
 
+    // Consumer thread only: the drop window this pass would report, and what has been reported.
+    private long lastDropCheckAt;
+    private long reportedDrops;
+
     private int buffered;
     private long minCapture = Long.MAX_VALUE;
     private long maxCapture = Long.MIN_VALUE;
@@ -79,6 +84,7 @@ public final class StoreConsumer implements Runnable {
         this.sealIntervalMillis = sealIntervalMillis;
         this.lastForceAt = System.currentTimeMillis();
         this.lastSealAt = System.currentTimeMillis();
+        this.lastDropCheckAt = System.currentTimeMillis();
     }
 
     @Override
@@ -89,6 +95,7 @@ public final class StoreConsumer implements Runnable {
                 flushBuffer();
                 maybeForce();
                 maybeSeal();
+                maybeRecordDrops();
                 serveRequests();
                 if (drained == 0) {
                     LockSupport.parkNanos(IDLE_PARK_NANOS);
@@ -190,11 +197,71 @@ public final class StoreConsumer implements Runnable {
             recordsStored.addAndGet(buffered);
         } catch (IOException | StoreException e) {
             storeFailures.incrementAndGet();
-            logger.error("Could not write {} captured records; they stay in the ring for the next pass", buffered, e);
+            // These records are gone. The ring's head moved when they were drained into this
+            // buffer, so there is nothing to retry from, and the buffer is cleared below. Saying
+            // they "stay in the ring for the next pass", as this used to, was simply false. The
+            // only honest thing left is to record the hole so that a rollback over it refuses.
+            logger.error("Lost {} captured records that could not be written; recording a gap", buffered, e);
+            recordGap(
+                    minCapture,
+                    maxCapture,
+                    GapRecord.Reason.OVERFLOW,
+                    buffered,
+                    "a journal or store write failed: " + e.getMessage());
         } finally {
             buffered = 0;
             minCapture = Long.MAX_VALUE;
             maxCapture = Long.MIN_VALUE;
+        }
+    }
+
+    /**
+     * Turns records capture had to throw away into a gap.
+     *
+     * <p>ADR-0012 is explicit that a drop is only acceptable because it becomes a gap, and until
+     * now it did not: the counter went up and nothing else happened, so a rollback over a window
+     * where the ring had overflowed would have run believing the history complete.
+     *
+     * <p>The window is from the previous check to now. A record counted as dropped in this pass was
+     * dropped after the previous pass, so that interval always contains it; the capture path does
+     * not keep the timestamps of things it threw away, and inventing a narrower window would be
+     * guessing in the one direction that matters.
+     */
+    private void maybeRecordDrops() {
+        long now = System.currentTimeMillis();
+        if (now - lastDropCheckAt < forceIntervalMillis) {
+            return;
+        }
+        long dropped = capture.dropped();
+        long unreported = dropped - reportedDrops;
+        if (unreported <= 0) {
+            lastDropCheckAt = now;
+            return;
+        }
+        boolean recorded = recordGap(
+                lastDropCheckAt,
+                now,
+                GapRecord.Reason.OVERFLOW,
+                unreported,
+                unreported + " records were dropped by capture: the ring was full, or the slot clock could not"
+                        + " order them");
+        if (recorded) {
+            reportedDrops = dropped;
+            lastDropCheckAt = now;
+        }
+        // If the gap could not be written, the window stays open and the next pass tries again with
+        // a wider one. Losing the record of a loss is the one outcome worth retrying for.
+    }
+
+    private boolean recordGap(long fromMillis, long toMillis, GapRecord.Reason reason, long count, String detail) {
+        long from = Math.min(fromMillis, toMillis);
+        long to = Math.max(fromMillis, toMillis);
+        try {
+            store.recordGap(new GapRecord(from, to, reason, count, detail));
+            return true;
+        } catch (StoreException | RuntimeException e) {
+            logger.error("Could not record a gap for {} lost records between {} and {}", count, from, to, e);
+            return false;
         }
     }
 

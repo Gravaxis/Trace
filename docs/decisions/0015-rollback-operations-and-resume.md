@@ -72,9 +72,12 @@ earlier run cannot still be going.
 ## What is proven, and what is not
 
 Proven, on Paper and on Folia, by the `rollback-resume` scenario: a rollback cancelled mid-flight
-stops at a chunk boundary with 40 of 240 positions restored, is listed as unfinished, and a resume
-restores exactly the remaining 200 across the other five chunks and ends `DONE`. The world is
-checked block by block afterwards, not just the counters.
+stops at a chunk boundary having restored some but not all of the 240 positions, is listed as
+unfinished, and a resume restores exactly the rest and ends `DONE`. The world is checked block by
+block afterwards, not just the counters, and the assertions are made against the resumed run's own
+numbers rather than the operation's totals, which carry the first run's work forward. How the work
+divides between the two runs depends on when the cancellation lands, so it is neither asserted nor
+published.
 
 Not proven, and not claimed:
 
@@ -83,6 +86,13 @@ Not proven, and not claimed:
   cancellation reaches the same state deliberately, which is why it is used, but a crash landing
   inside a rollback is a different timing and has not been exercised.
 * **Two rollbacks over overlapping boxes** are permitted and untested.
+* **A contended chunk** — one whose region does not accept the work within the timeout — is counted,
+  leaves the cursor frozen and ends the operation `PARTIAL`, and none of that is covered by a test.
+  The scenario cancels a rollback; it never saturates a region. This is where a review found the
+  worst defect in the first version of this design: the region task the wait had given up on still
+  held the fold's arrays, which the next chunk overwrote, so a task that ran late could write blocks
+  no row in the scan had named. It now gets its own copy of the fold, its own counters, and a flag
+  it checks before every write, but the path itself is still unexercised.
 * **An operation whose world is gone** is refused, and that refusal is not covered by a test.
 
 ## Alternatives considered

@@ -157,10 +157,16 @@ abstract class CrashInjectionTask : DefaultTask() {
             val resultFile = dir.resolve("harness-result.json")
             val lossy = ServerRuntime.readDetail(resultFile, "crash.lossy") == "true"
             val inconclusive = ServerRuntime.readDetail(resultFile, "crash.inconclusive")
+            // Carried into the report so that anything published about what a crash costs has a
+            // committed artefact behind it. A figure quoted from a console line nobody kept is
+            // exactly the kind of number this project is not allowed to print.
+            val recorded = ServerRuntime.readDetail(resultFile, "crash.truthEvents")?.toLongOrNull() ?: -1L
+            val missing = ServerRuntime.readDetail(resultFile, "crash.missing")?.toLongOrNull() ?: -1L
             if (lossy) {
                 lossyIterations++
             }
-            outcomes += """{"iteration": $iteration, "killDelayMs": $delay, "verified": $passed, "lossy": $lossy}"""
+            outcomes += """{"iteration": $iteration, "killDelayMs": $delay, "verified": $passed, """ +
+                """"lossy": $lossy, "recordedEvents": $recorded, "lostEvents": $missing}"""
             if (!passed || verifyRun.exitCode != 0) {
                 failures += "iteration $iteration (killed after ${delay}ms): $text\n${verifyRun.describe()}"
             } else if (inconclusive != null) {

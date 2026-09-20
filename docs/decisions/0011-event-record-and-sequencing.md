@@ -61,7 +61,8 @@ the ordering the primary key declares while keeping the row narrow.
   has no branches that allocate. Gate P1 measures exactly this path, through the same
   `CaptureService` entry points the server's listener calls; see ADR-0009.
 * 3,072 events per millisecond per thread is the ceiling before overflow: the sequence counter is
-  ten bits (1,023 stamps) and the clock may run up to two milliseconds ahead of wall time. This
+  ten bits, so 1,024 stamps per logical millisecond, and the clock may run up to two milliseconds
+  ahead of wall time, which is three sweeps of it. Three times 1,024 is 3,072. This
   paragraph said 4,096 until 2026-09-20, which was the record's own sequence width rather than the
   number the clock will actually issue; the code has always done 3,072, and a unit test now pins
   that the overflow path is reachable and counted separately from a full ring. A single FAWE-scale

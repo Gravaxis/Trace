@@ -27,6 +27,7 @@ import in.gravaxis.trace.storage.OperationState;
 import in.gravaxis.trace.storage.RollbackOperation;
 import in.gravaxis.trace.storage.ScanPlan;
 import in.gravaxis.trace.storage.StoreException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -34,6 +35,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -265,13 +267,19 @@ public final class RollbackService {
                 finalState = OperationState.PARTIAL;
             }
         } catch (StoreException | RuntimeException e) {
-            store.finishOperation(id, OperationState.FAILED, carried.plus(summary.progress()));
-            running.remove(id);
+            // A second failure here must not hide the first, and must not leave the operation
+            // looking as though it is still running: nothing would ever be able to resume it.
+            try {
+                store.finishOperation(id, OperationState.FAILED, carried.plus(summary.progress()));
+            } catch (StoreException | RuntimeException secondary) {
+                e.addSuppressed(secondary);
+            }
             throw e;
+        } finally {
+            running.remove(id);
         }
 
         store.finishOperation(id, finalState, carried.plus(summary.progress()));
-        running.remove(id);
         return summary.build(id, finalState, carried);
     }
 
@@ -288,6 +296,18 @@ public final class RollbackService {
         store.checkpointOperation(id, safe, carried.plus(summary.progress()));
     }
 
+    /**
+     * Applies one chunk's fold on the thread that owns it, and waits.
+     *
+     * <p>The task is given its own copy of the fold and its own counters, and a flag it checks
+     * before every write. That is three defences against the same thing: a task the region did not
+     * run in time. Waiting on it can give up, but nothing can take the task back — the region
+     * scheduler's {@code execute} returns no handle — so a task abandoned here may still run
+     * minutes later, after the caller has refilled the fold with another chunk's rows, recorded a
+     * checkpoint and returned a summary. Sharing the fold's arrays with it would let it write
+     * blocks no row in the scan ever named; sharing the counters would let it change numbers that
+     * have already been persisted.
+     */
     private void applyChunk(World world, long chunkKey, ChunkFold fold, RollbackSummary.Builder summary) {
         int chunkX = Morton.chunkX(chunkKey);
         int chunkZ = Morton.chunkZ(chunkKey);
@@ -297,35 +317,46 @@ public final class RollbackService {
         // the ways a rollback turns into a server freeze.
         world.getChunkAtAsync(chunkX, chunkZ, true).join();
 
-        CompletableFuture<Void> applied = new CompletableFuture<>();
+        // Copies. The fold is reused for the next chunk the moment this returns.
         int count = fold.size();
-        int[] positions = fold.positions();
-        int[] expected = fold.expected();
-        int[] targets = fold.targets();
+        int[] positions = Arrays.copyOf(fold.positions(), count);
+        int[] expected = Arrays.copyOf(fold.expected(), count);
+        int[] targets = Arrays.copyOf(fold.targets(), count);
+
+        AtomicBoolean abandoned = new AtomicBoolean();
+        CompletableFuture<int[]> applied = new CompletableFuture<>();
 
         Bukkit.getRegionScheduler().execute(plugin, world, chunkX, chunkZ, () -> {
+            // Counted locally and merged only if this task finishes in time, so an abandoned task
+            // cannot move a number that has already been written to the operation row.
+            int appliedHere = 0;
+            int alreadyHere = 0;
+            int mismatchedHere = 0;
             try {
                 int baseX = chunkX << 4;
                 int baseZ = chunkZ << 4;
-                for (int i = 0; i < count; i++) {
+                for (int i = 0; i < count && !abandoned.get(); i++) {
                     int x = baseX + ChunkFold.localX(positions[i]);
                     int y = ChunkFold.y(positions[i]);
                     int z = baseZ + ChunkFold.localZ(positions[i]);
                     int current = states.idOf(world.getType(x, y, z));
                     if (current == targets[i]) {
-                        summary.alreadyThere();
+                        alreadyHere++;
                         continue;
                     }
                     if (current != expected[i]) {
                         // Someone changed this block after the history Trace is undoing. Their work
                         // is not ours to overwrite.
-                        summary.mismatched();
+                        mismatchedHere++;
                         continue;
                     }
                     Material material = states.materialOf(targets[i]);
                     if (material == null) {
-                        summary.mismatched();
+                        mismatchedHere++;
                         continue;
+                    }
+                    if (abandoned.get()) {
+                        break;
                     }
                     // Trace's own write is captured like any other change, so it can be undone.
                     capture.captureBlockChange(
@@ -338,23 +369,29 @@ public final class RollbackService {
                             Cause.ROLLBACK.id(),
                             RecordKind.BLOCK.id());
                     world.getBlockAt(x, y, z).setType(material, false);
-                    summary.applied();
+                    appliedHere++;
                 }
-                applied.complete(null);
+                applied.complete(new int[] {appliedHere, alreadyHere, mismatchedHere});
             } catch (RuntimeException e) {
                 applied.completeExceptionally(e);
             }
         });
 
         try {
-            applied.get(CHUNK_APPLY_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+            int[] counts = applied.get(CHUNK_APPLY_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+            summary.applied(counts[0]);
+            summary.alreadyThere(counts[1]);
+            summary.mismatched(counts[2]);
             summary.chunk();
         } catch (TimeoutException e) {
             // The region never ran the task. That is a chunk left undone, not a broken rollback:
             // it is counted, the operation ends PARTIAL rather than DONE, and the checkpoint stops
-            // advancing so a resume comes back for it.
+            // advancing so a resume comes back for it. Abandoning it first is what stops it writing
+            // anything once this method has returned.
+            abandoned.set(true);
             summary.contended();
         } catch (InterruptedException e) {
+            abandoned.set(true);
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted applying chunk " + chunkX + "," + chunkZ, e);
         } catch (ExecutionException e) {

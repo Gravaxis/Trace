@@ -57,6 +57,21 @@ something it must cover.
 that did not survive must fall inside a recorded gap. A rig that only checked "losses form a
 suffix" would pass while L8 was being violated.
 
+### Known defect: the thirty-third capture thread (2026-09-20)
+
+There are 32 producer slots. A thread beyond that is given the last slot, and the code says so and
+counts it (`slotsExhausted`). What it then does is wrong: it opens a *second* mapping of that slot's
+ring file and builds a second clock for it, so two threads write into a ring that is single-producer
+by construction. Two producers can compute the same slot index, and one record silently overwrites
+another with no drop counted and therefore no gap. The comment claiming key uniqueness still holds
+is false: two clocks with the same slot id can emit the same stamp.
+
+This record already specifies the answer, and none of it exists yet: one ring per slot, claimed by
+compare-and-set, with reclamation when a thread goes away. Until it does, a server with more than 32
+distinct capture threads can lose records without saying so, and the durability property the crash
+gate tests does not extend to that case. Written down here rather than left to be found, and not
+papered over with a half-fix that would trade one silent failure for another.
+
 ## Consequences
 
 * Trace writes ring and spill files during normal operation. They are fixed-size, preallocated and
