@@ -100,6 +100,40 @@ everything up to 64 answered "same region", everything from 128 answered "other 
 scenario uses 128 chunks. An earlier version used 40 and tested one region twice while claiming two.
 This is an observation of our own test server, reproducible by re-running the scenario.
 
+### CoreProtect storage density, first observation (2026-09-21)
+
+The owner supplied a real CoreProtect database for SPIKE-2: 12,349,562,880 bytes, standard `co_*`
+schema, zero free pages.
+
+**Why reading it is permitted.** The clean-room rule forbids opening CoreProtect's *source*. This is
+a database their software produced, observed as a black box, which is what the approved plan named
+as SPIKE-2's input from the outset. No CoreProtect jar was downloaded and no source was read.
+
+**Privacy.** The file holds real player data, including IP addresses in `co_session`. Only aggregates
+were read: row counts per table, and per-object page and byte totals from the `dbstat` virtual
+table. No row was selected. Nothing from the file is committed, and no figure below identifies
+anyone.
+
+**Method.** `pragma page_count`/`page_size`/`freelist_count`, `select count(*)` per table, and
+`select name, count(*), sum(pgsize) from dbstat group by name`, over a read-only connection. Note
+that `dbstat` is **not** available in Python's bundled SQLite but **is** available in the pinned
+`org.xerial:sqlite-jdbc:3.49.1.0` — the same driver Paper bundles — so the in-repo tool needs no new
+dependency. The full page walk took 686 s.
+
+**Observed.** 133,529,532 rows in `co_block`; every other table combined holds 34,000 rows, so the
+database is 99.97% block logging by row count. Bytes attributable to block logging, 12,343,799,808,
+are 99.95% of the file: 4,243,337,216 in the table and 8,100,462,592 across its three indexes. That
+works out at 31.78 bytes of row data per logged block change and 92.44 bytes including the indexes,
+which cost 2.9 times the rows they index.
+
+**Status: not publishable.** These figures came from a throwaway script, not from a committed tool,
+so by this project's own rule they do not yet exist. They are recorded here as an observation and a
+method, to be reproduced by the measurement task M3 builds. Nothing derived from them may reach the
+README, the documentation site or any comparison until that task is committed and its output is in
+`benchmarks/results/`. A comparison also needs the Trace side measured the same way, and a statement
+of what is counted on each side: the two databases hold different data, and a ratio between them
+licenses far less than it appears to.
+
 ## How to add to this file
 
 One row or bullet per source: what you read, where, and when. If a fact is load-bearing — a version

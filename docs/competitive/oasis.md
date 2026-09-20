@@ -109,15 +109,16 @@ NOTE: unverifiable — they state the test scripts and raw results are kept OUTS
 
 Traceable to the repository, not to the analysis:
 
-| Their requirement | Where Trace stands on 2026-09-20 |
+| Their requirement | Where Trace stands on 2026-09-21 |
 |---|---|
 | Constant-memory streaming rollback | `MutationCursor` streams; `RollbackService` folds one chunk at a time and never materialises the edit list. Memory is not yet measured under load — no number is claimed. |
-| Crash-safe journal-first write path | Built ([ADR-0013](decisions/0013-journal-and-recovery.md)). Proven against `kill -9` only for the harness's own log so far; the rig does not yet shoot at Trace's journal. |
-| Resumable rollback | Not built. Listed as an unmet M2 item in [ROADMAP.md](../../ROADMAP.md). |
-| Tick-budgeted, cancellable application | Applies per region with verification; no adaptive budget, no cancel. M6. |
+| Crash-safe journal-first write path | Built ([ADR-0013](decisions/0013-journal-and-recovery.md)) and the rig now shoots at Trace's own journal: `crashJournalTest` kills a capturing server and checks every lost event falls inside a recorded gap, failing a run in which nothing was lost. Two other gap-producing loss modes remain untested. |
+| Resumable rollback | Built and proven on Paper and Folia by the `rollback-resume` scenario ([ADR-0015](decisions/0015-rollback-operations-and-resume.md)). Resume after a real crash, rather than a cancellation, is still untested. |
+| Tick-budgeted, cancellable application | Applies per region with verification, and a rollback can be cancelled per operation and resumed. No adaptive tick budget. M6. |
 | Chunk-clustered storage | Built: Morton chunk key, `WITHOUT ROWID` shards keyed `(world, chunk, key)`, keyset paging, no `OFFSET`. |
 | Content dedup for payloads | Not built. M4. |
 | Full-fidelity restores, failing loudly | Not built; block entities are explicitly reported as "contents not captured in this build" before a rollback runs, which is the loud-failure shape. M4. |
-| Word grammar plus a GUI | `/trace` exists with two subcommands. Grammar is M7, dialogs are M8. |
-| Embedded default with no external service | The whole premise; SQLite tier is what M2 and M3 are. |
+| Word grammar plus a GUI | `/trace` exists with `status`, `rollback` and `resume`. Grammar is M7, dialogs are M8. |
+| Embedded default with no external service | The whole premise. The SQLite tier captures, stores and rolls back today; compaction, retention, verify and blobs are M3. |
+| Storage density | Not measured on either side by anything committed. A real CoreProtect database has been observed once (see [provenance.md](decisions/provenance.md)), but SPIKE-2's repeatable measurement task is M3 work and no figure may be published until it exists. |
 | Reproducible published benchmarks | Built in M1: `./gradlew benchmark` writes a results directory, and `verifyReadmeTable` fails the build if the README table is hand-edited. |

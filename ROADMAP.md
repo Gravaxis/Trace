@@ -166,8 +166,12 @@ Tracked in the ADRs rather than here, but the ones that shape upcoming work:
   covered by a test, and neither is the cost of checkpointing. Both are named in
   [ADR-0015](docs/decisions/0015-rollback-operations-and-resume.md) rather than left to be
   discovered.
-* **M3** — SPIKE-2 (real bytes per event) needs a CoreProtect database. Without one, no
-  storage-density number is published.
+* **M3** (unblocked) — SPIKE-2 has its CoreProtect database: the owner supplied a real 12.35 GB one
+  on 2026-09-21, and a first observation of its density, the method, and the privacy and clean-room
+  reasoning are in [provenance.md](docs/decisions/provenance.md). What is still missing is the part
+  that matters: a committed, repeatable measurement task. Until that exists and its output is under
+  `benchmarks/results/`, no storage-density figure may be published, including the one already
+  observed.
 * **M9** — the CoreProtect compatibility bridge needs classes in the `net.coreprotect` package, and
   parts of that API's wire format are undocumented. Scope and legal review pending.
 * **Positioning** — the owner has identified Oasis and supplied an analysis
