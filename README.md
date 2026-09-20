@@ -35,7 +35,7 @@ Allocation gate (JMH `gc.alloc.rate.norm`): `allocatingReference` 48.000 B/op, `
 
 Crash injection: 2/2 restarts verified on paper 26.2 build 126 after SIGKILL at 2497, 1045 ms; 3/3 restarts verified on folia 26.2 build 7 after SIGKILL at 2973, 3024, 2868 ms; 3/3 restarts verified on paper 26.2 build 126 after SIGKILL at 2973, 3024, 2868 ms.
 
-Measured on AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD, 16 threads, Windows 10 10.0, Oracle Corporation 25.0.4+7-LTS-189, Paper 26.2 build 126. Raw results: [`benchmarks/results/2026-09-20-20b6d23ae2f0`](benchmarks/results/2026-09-20-20b6d23ae2f0).
+Measured on AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD, 16 threads, Windows 10 10.0, Oracle Corporation 25.0.4+7-LTS-189, Paper 26.2 build 126. Raw results: [`benchmarks/results/2026-09-20-280beffda3cb`](benchmarks/results/2026-09-20-280beffda3cb).
 <!-- bench:end -->
 
 ## Install

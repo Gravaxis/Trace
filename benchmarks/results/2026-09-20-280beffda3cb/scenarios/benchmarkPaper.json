@@ -1,0 +1,32 @@
+{
+  "scenario": "block-churn",
+  "status": "PASS",
+  "params": {
+    "ticks": "200",
+    "blocksPerTick": "256"
+  },
+  "details": {
+    "server.brand": "Paper",
+    "server.minecraftVersion": "26.2",
+    "server.version": "26.2-126-c646faf (MC: 26.2)",
+    "server.regionised": "false",
+    "java.version": "25.0.4+7-LTS-189",
+    "heap.maxBytes": "1073741824",
+    "world": "world",
+    "chunk": "0,0",
+    "y": "-54",
+    "plan": "200 ticks x 256 blocks"
+  },
+  "metrics": [
+    {"name": "blocks.written", "value": 51200, "unit": "count"},
+    {"name": "blocks.perSecond", "value": 5119.645669323226, "unit": "per second"},
+    {"name": "wall.elapsed", "value": 10000.6921, "unit": "ms"},
+    {"name": "tick.samples", "value": 200, "unit": "count"},
+    {"name": "tick.p50", "value": 0.6471, "unit": "ms"},
+    {"name": "tick.p99", "value": 4.7203, "unit": "ms"},
+    {"name": "tick.max", "value": 188.4235, "unit": "ms"},
+    {"name": "heap.collections", "value": 2, "unit": "count"},
+    {"name": "heap.peakAfterGc", "value": 301235584, "unit": "bytes"}
+  ],
+  "failures": []
+}
