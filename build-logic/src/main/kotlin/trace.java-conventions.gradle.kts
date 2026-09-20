@@ -47,7 +47,18 @@ val testJvmVersion = providers.gradleProperty("trace.testJvm")
   .orElse(javaVersion)
 val javaToolchainService = extensions.getByType<org.gradle.jvm.toolchain.JavaToolchainService>()
 
+// Property-test knobs reach the forked test JVM, so `-Dtrace.property.cases=...` on the command
+// line actually runs the properties harder instead of being silently ignored.
+val propertyCases = providers.systemProperty("trace.property.cases")
+val propertySeed = providers.systemProperty("trace.property.seed")
+
 tasks.withType<Test>().configureEach {
+  if (propertyCases.isPresent) {
+    systemProperty("trace.property.cases", propertyCases.get())
+  }
+  if (propertySeed.isPresent) {
+    systemProperty("trace.property.seed", propertySeed.get())
+  }
   javaLauncher.set(
     javaToolchainService.launcherFor {
       languageVersion.set(JavaLanguageVersion.of(testJvmVersion.get()))

@@ -1,5 +1,7 @@
 plugins {
   id("trace.java-conventions")
+  // The contract suite below is the storage spec: every backend subclasses it and must pass it.
+  `java-test-fixtures`
 }
 
 description =
@@ -8,4 +10,10 @@ description =
 
 dependencies {
   api(project(":trace-core"))
+
+  testFixturesApi(platform(libs.junit.bom))
+  testFixturesApi(libs.junit.jupiter)
+  testFixturesApi(libs.assertj)
+  testFixturesApi(testFixtures(project(":trace-core")))
+  testFixturesCompileOnly(libs.jspecify)
 }

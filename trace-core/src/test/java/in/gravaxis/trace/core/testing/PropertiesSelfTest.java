@@ -36,7 +36,8 @@ class PropertiesSelfTest {
                     assertThat(value).isBetween(0, 1000);
                 }))
                 .doesNotThrowAnyException();
-        assertThat(runs).hasValue(50);
+        // At least the requested cases; -Dtrace.property.cases can raise it, and does in CI.
+        assertThat(runs.get()).isGreaterThanOrEqualTo(50);
     }
 
     @Test

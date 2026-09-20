@@ -12,5 +12,8 @@ dependencies {
   // that version rather than the newest release, or calls added later fail with NoSuchMethodError.
   // See docs/decisions/0003-sqlite-driver.md.
   compileOnly(libs.sqlite.jdbc)
+
   testImplementation(libs.sqlite.jdbc)
+  testImplementation(testFixtures(project(":trace-storage-api")))
+  testImplementation(testFixtures(project(":trace-core")))
 }

@@ -48,6 +48,9 @@ public final class Properties {
     }
 
     public static void forAll(String description, int cases, Consumer<Gen> property) {
+        // An explicit count is a floor for a normal build; -Dtrace.property.cases raises it, which
+        // is how the same properties get run at the scale the build spec asks for.
+        cases = Math.max(cases, configuredCases());
         long seed = defaultSeed();
         SplittableRandom random = new SplittableRandom(seed);
         for (int caseIndex = 0; caseIndex < cases; caseIndex++) {
@@ -113,8 +116,12 @@ public final class Properties {
     }
 
     private static int defaultCases() {
+        return Math.max(DEFAULT_CASES, configuredCases());
+    }
+
+    private static int configuredCases() {
         String configured = System.getProperty(CASES_PROPERTY);
-        return configured == null ? DEFAULT_CASES : Integer.parseInt(configured);
+        return configured == null ? 0 : Integer.parseInt(configured);
     }
 
     private static long defaultSeed() {
