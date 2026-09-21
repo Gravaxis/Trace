@@ -18,12 +18,16 @@ import java.util.HexFormat;
 /** Canonical absolute row encoding: independent of the shard timestamp base. */
 final class RowDigest {
     private final MessageDigest digest;
+    private final MessageDigest rowHash;
+    private long sumHigh;
+    private long sumLow;
     private final ByteBuffer buffer = ByteBuffer.allocate(80);
     private long count;
 
     RowDigest() {
         try {
             digest = MessageDigest.getInstance("SHA-256");
+            rowHash = MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             throw new AssertionError(e);
         }
@@ -52,7 +56,37 @@ final class RowDigest {
                 .putLong(cause)
                 .putLong(kind);
         digest.update(buffer.array());
+        var hash = ByteBuffer.wrap(rowHash.digest(buffer.array()));
+        long high = hash.getLong();
+        long low = hash.getLong();
+        long previous = sumLow;
+        sumLow += low;
+        sumHigh += high + (Long.compareUnsigned(sumLow, previous) < 0 ? 1 : 0);
         count++;
+    }
+
+    /** Addition retains even multiplicities, which XOR would silently cancel. */
+    String multiset() {
+        return HexFormat.of()
+                .formatHex(ByteBuffer.allocate(24)
+                        .putLong(count)
+                        .putLong(sumHigh)
+                        .putLong(sumLow)
+                        .array());
+    }
+
+    void add(java.sql.ResultSet rows, long base) throws SQLException {
+        add(
+                rows.getInt(1),
+                rows.getLong(2),
+                ShardKeys.timestampOf(base, rows.getLong(3)),
+                ShardKeys.sequenceOf(rows.getLong(3)),
+                rows.getInt(4),
+                rows.getInt(5),
+                rows.getInt(6),
+                rows.getInt(7),
+                rows.getInt(8),
+                rows.getInt(9));
     }
 
     String finish() {
@@ -63,6 +97,10 @@ final class RowDigest {
     }
 
     static String read(Connection connection, long base) throws SQLException {
+        return readRows(connection, base).finish();
+    }
+
+    static RowDigest readRows(Connection connection, long base) throws SQLException {
         RowDigest result = new RowDigest();
         try (var s = connection.createStatement();
                 var rows = s.executeQuery("SELECT w,c,k,p,b,a,actor,cause,kind FROM ev ORDER BY w,c,k")) {
@@ -79,6 +117,6 @@ final class RowDigest {
                         rows.getInt(8),
                         rows.getInt(9));
         }
-        return result.finish();
+        return result;
     }
 }

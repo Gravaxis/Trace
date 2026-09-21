@@ -1332,6 +1332,7 @@ public final class SqliteEventStore implements EventStore {
                 s.execute("CREATE TEMP TABLE merge_event AS SELECT * FROM main.hot_event WHERE 0");
             }
             long copied = 0, removed = 0;
+            RowDigest preserved = new RowDigest();
             Exclusion selection = new Exclusion(actor == null, actor == null ? 0 : actor, from, to);
             for (ShardRef shard : inputs) {
                 try (Connection reader = readShard(shardDirectory.resolve(shard.file()))) {
@@ -1352,6 +1353,7 @@ public final class SqliteEventStore implements EventStore {
                                 removed++;
                                 continue;
                             }
+                            preserved.add(rows, shard.baseMillis());
                             for (int i = 1; i <= 9; i++) insert.setLong(i, rows.getLong(i));
                             insert.setLong(3, ShardKeys.key(0, timestamp, ShardKeys.sequenceOf(rows.getLong(3))));
                             insert.executeUpdate();
@@ -1381,7 +1383,10 @@ public final class SqliteEventStore implements EventStore {
                 if (written != copied)
                     throw new StoreException(StoreException.Reason.CORRUPT, "Rewrite count mismatch");
                 try (Connection check = readShard(file)) {
-                    digest = RowDigest.read(check, base);
+                    RowDigest actual = RowDigest.readRows(check, base);
+                    if (!preserved.multiset().equals(actual.multiset()))
+                        throw new StoreException(StoreException.Reason.CORRUPT, "Rewrite multiset mismatch");
+                    digest = actual.finish();
                 }
                 bytes = Files.size(file);
             }

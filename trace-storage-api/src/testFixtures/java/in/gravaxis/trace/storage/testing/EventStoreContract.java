@@ -60,6 +60,44 @@ public abstract class EventStoreContract {
     /** Opens a store in {@code directory}. Called again by tests that reopen. */
     protected abstract EventStore open(Path directory) throws StoreException;
 
+    /** Backend fixture identifies the sealed shard; the contract never assumes physical ids. */
+    protected abstract long firstLiveShard() throws Exception;
+
+    /** Injects failure into quarantine's gap publication, removed when the handle closes. */
+    protected abstract AutoCloseable failQuarantineGap() throws Exception;
+
+    @Test
+    void quarantineAndRefusalGapAreAtomicAcrossFailureRetryAndReopen() throws Exception {
+        List<Events> events = line(5, T0);
+        append(events, 1);
+        store.seal();
+        long shard = firstLiveShard();
+        var plan = planFor(events);
+        var expected = oracle(events, plan);
+        try (var fault = failQuarantineGap()) {
+            assertThatThrownBy(() -> store.quarantineShard(shard, "contract fault"))
+                    .isInstanceOf(StoreException.class);
+            assertThat(store.stats().shardCount()).isEqualTo(1);
+            assertThat(store.gapsBetween(T0, T0 + 100)).isEmpty();
+            assertThat(scanAll(plan)).containsExactlyElementsOf(expected);
+        }
+        store.close();
+        store = open(directory);
+        assertThat(scanAll(plan)).containsExactlyElementsOf(expected);
+        assertThat(store.gapsBetween(T0, T0 + 100)).isEmpty();
+        store.quarantineShard(shard, "contract retry");
+        assertThat(store.stats().shardCount()).isZero();
+        assertThat(store.gapsBetween(T0, T0 + 100))
+                .singleElement()
+                .satisfies(gap -> assertThat(gap.reason()).isEqualTo(GapRecord.Reason.QUARANTINE));
+        assertThatThrownBy(() -> store.scan(plan)).isInstanceOf(StoreException.class);
+        store.close();
+        store = open(directory);
+        assertThat(store.stats().shardCount()).isZero();
+        assertThat(store.gapsBetween(T0, T0 + 100)).hasSize(1);
+        assertThatThrownBy(() -> store.scan(plan)).isInstanceOf(StoreException.class);
+    }
+
     @BeforeEach
     void openStore() throws StoreException {
         store = open(directory);
