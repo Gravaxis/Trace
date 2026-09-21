@@ -151,12 +151,13 @@ tasks.register<JavaExec>("storageDensity") {
   val privateInput = providers.gradleProperty("trace.density.input").orElse("")
   val output = layout.buildDirectory.file("density/report.json")
   val scratch = layout.buildDirectory.dir("density/work")
+  val densityResultsRoot = rootProject.layout.projectDirectory.dir("benchmarks/results/density").asFile.absolutePath
   outputs.file(output)
   outputs.upToDateWhen { false }
   argumentProviders.add(CommandLineArgumentProvider {
     listOf(privateInput.get(), output.get().asFile.absolutePath,
       scratch.get().asFile.absolutePath,
-      rootProject.layout.projectDirectory.dir("benchmarks/results/density").asFile.absolutePath)
+      densityResultsRoot)
   })
   maxHeapSize = "1g"
 }
