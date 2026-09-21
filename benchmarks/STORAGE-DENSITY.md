@@ -52,3 +52,12 @@ The fixture tests assert nonzero table and index attribution, free-page accounti
 write refusal, no leaked planted values/identifiers, missing-file refusal, and the
 actual row count after Trace sealing. They do not establish the private result;
 only the completed committed aggregate report does that.
+## Recorded M3 measurements
+
+The private baseline is `results/density/2026-09-21-e643f099dcdc/density.json`.
+The updated Trace format is `results/density/2026-09-21-e82a6dda926e/density.json`,
+measured from clean committed source. Both use the same `DensityReader`.
+Format-3 schema overhead includes empty blob and maintenance tables; blob
+payloads, dictionaries, capture rings and journals are absent from the fixture.
+The second report deliberately marks private input as not measured for that run.
+These reports have different workloads and do not establish a savings ratio.

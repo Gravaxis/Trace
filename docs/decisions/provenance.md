@@ -165,3 +165,11 @@ The Trace fixtures in this baseline use the pre-M3 implementation; ADR-0018 and
 
 One row or bullet per source: what you read, where, and when. If a fact is load-bearing — a version
 pin, an API contract, a licence claim — cite the primary source, not a summary of it.
+## 2026-09-21 — M3 density follow-up
+
+The synthetic Trace side was rerun after implementation commit e82a6dda926e, with
+a clean tree, through `:benchmarks:storageDensity` without a private input argument.
+Its aggregate report is `benchmarks/results/density/2026-09-21-e82a6dda926e/density.json`.
+The same dbstat reader was used. This does not repeat or replace the private-input
+walk recorded in `benchmarks/results/density/2026-09-21-e643f099dcdc/density.json`.
+No dataset equivalence or production savings ratio is established.

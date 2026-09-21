@@ -1,6 +1,6 @@
 # ADR-0018: Density is page accounting with explicit denominators
 
-* Status: baseline tool and aggregate result committed; M3 Trace rerun pending
+* Status: repeatable tool, private baseline and M3 Trace results recorded
 * Date: 2026-09-21
 * Milestone: M3
 
@@ -35,4 +35,9 @@ It reports a dirty working tree because independent M3 edits proceeded during th
 private page walk. Unit builds shared the machine; elapsed time is execution
 metadata, not an uncontended performance benchmark. M3 Trace must be measured
 again after its implementation is committed; the private page walk need not be
-repeated for that synthetic-only run.
+repeated for that synthetic-only run. That run is now recorded at
+`benchmarks/results/density/2026-09-21-e82a6dda926e/density.json`, from clean source
+commit e82a6dda926e. It uses the same reader and includes format-3 manifest schema
+overhead (including empty blob/maintenance tables), but no blob payloads. The
+private-input entry is explicitly not measured in this run; use the earlier
+committed baseline for that side, not a duplicated or silently reused result.
