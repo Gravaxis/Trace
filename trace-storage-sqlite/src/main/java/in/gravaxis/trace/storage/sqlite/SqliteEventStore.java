@@ -1078,13 +1078,28 @@ public final class SqliteEventStore implements EventStore {
     /** Physical deletion is delayed until every old scan has released its connections. */
     public synchronized void sweepRetired() throws StoreException {
         if (activeScans != 0) return;
-        try (var s = writer.createStatement();
-                var r = s.executeQuery("SELECT file FROM shard WHERE state=1")) {
-            while (r.next()) Files.deleteIfExists(shardDirectory.resolve(r.getString(1)));
+        int limit = maintenance == null ? Integer.MAX_VALUE : maintenance.budget.maxShards();
+        List<RetiredFile> retired = new ArrayList<>();
+        try (var s = writer.prepareStatement("SELECT id,file FROM shard WHERE state=1 ORDER BY id LIMIT ?")) {
+            s.setInt(1, limit);
+            try (var r = s.executeQuery()) {
+                while (r.next()) retired.add(new RetiredFile(r.getLong(1), r.getString(2)));
+            }
+            for (RetiredFile file : retired) {
+                Files.deleteIfExists(shardDirectory.resolve(file.name()));
+                // A kill between unlink and this marker retries the missing file safely.
+                // Remembering completion prevents each bounded pass revisiting the same prefix.
+                try (var mark = writer.prepareStatement("UPDATE shard SET state=3 WHERE id=? AND state=1")) {
+                    mark.setLong(1, file.id());
+                    mark.executeUpdate();
+                }
+            }
         } catch (SQLException | IOException e) {
             throw new StoreException(StoreException.Reason.DISK, "Retired shard sweep failed", e);
         }
     }
+
+    private record RetiredFile(long id, String name) {}
 
     @Override
     public synchronized long compact() throws StoreException {
@@ -1119,6 +1134,9 @@ public final class SqliteEventStore implements EventStore {
             control.check();
             if (remove && activeScans != 0) return new MaintenanceResult(MaintenanceResult.State.DEFERRED, 0);
             long rows = rewrite(actor, from, to, remove);
+            control.install(writer);
+            control.check();
+            sweepRetired();
             return new MaintenanceResult(
                     rows == 0 ? MaintenanceResult.State.NO_WORK : MaintenanceResult.State.COMPLETED, rows);
         } catch (StoreException | SQLException e) {
@@ -1304,6 +1322,8 @@ public final class SqliteEventStore implements EventStore {
     }
 
     private long rewrite(@Nullable Integer actor, long from, long to, boolean remove) throws StoreException {
+        Path outputFile = null;
+        boolean published = false;
         try {
             List<ShardRef> inputs = maintenanceInputs(remove);
             if (!remove && inputs.size() < 2) return 0;
@@ -1355,6 +1375,7 @@ public final class SqliteEventStore implements EventStore {
                     max = ShardKeys.timestampOf(0, r.getLong(2));
                 }
                 Path file = shardDirectory.resolve(name);
+                outputFile = file;
                 Files.deleteIfExists(file);
                 long written = writeShard(file, base, Long.MAX_VALUE, "temp.merge_event");
                 if (written != copied)
@@ -1421,16 +1442,20 @@ public final class SqliteEventStore implements EventStore {
             }
             audit(remove ? "REMOVE" : "COMPACT", id, remove ? removed : copied);
             writer.commit();
+            published = true;
             if (maintenance != null) maintenance.published = true;
             maintenanceProbe.accept("rewrite.committed");
             setAutoCommitQuietly();
-            sweepRetired();
             return remove ? removed : copied;
         } catch (SQLException | IOException | StoreException e) {
             clearMaintenanceHandler();
             rollbackQuietly();
             if (e instanceof StoreException failure) throw failure;
             throw new StoreException(StoreException.Reason.INTERNAL, "Shard rewrite failed", e);
+        } catch (RuntimeException e) {
+            clearMaintenanceHandler();
+            rollbackQuietly();
+            throw e;
         } finally {
             clearMaintenanceHandler();
             setAutoCommitQuietly();
@@ -1438,6 +1463,14 @@ public final class SqliteEventStore implements EventStore {
                 s.execute("DROP TABLE IF EXISTS temp.merge_event");
             } catch (SQLException ignored) {
                 /* Next pass recreates the temporary table. */
+            }
+            if (!published && outputFile != null) {
+                try {
+                    Files.deleteIfExists(outputFile);
+                } catch (IOException e) {
+                    throw new StoreException(
+                            StoreException.Reason.DISK, "Unpublished output cleanup failed; startup will retry", e);
+                }
             }
         }
     }

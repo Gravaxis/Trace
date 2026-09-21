@@ -34,3 +34,13 @@ Tests must assert cancelled-before-publication, oversized/deferred, admitted sub
 disabled, backlog-deferred, completed and retention opt-in branches. The pinned
 server scenario must capture two batches and observe consumer-driven compaction;
 calling compact directly from the scenario would not test scheduling.
+
+## Audit fixes
+
+New regression assertions first failed on unpublished output left by cancellation
+and retired files never swept when there was nothing left to merge. A cancelled
+rewrite now removes its own unpublished file (a killed process still relies on
+startup orphan recovery). Each scheduled sweep is limited by the shard budget and
+marks successfully unlinked metadata as state 3, distinct from retired/pending
+state 1. No-work passes continue this cleanup, so a limited sweep does not keep
+revisiting its already-deleted prefix. Quarantined files remain retained.

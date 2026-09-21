@@ -75,9 +75,45 @@ class MaintenanceBudgetTest {
             assertThat(cancel).isTrue();
             assertThat(store.stats().sealedRows()).isEqualTo(4);
             assertThat(store.gapsBetween(T, T + 4)).isEmpty();
+            try (var files = java.nio.file.Files.list(directory.resolve("shards"))) {
+                assertThat(files.count())
+                        .as("cancelled output must not accumulate until restart")
+                        .isEqualTo(3);
+            }
             store.maintenanceProbe(phase -> {});
             assertThat(store.compact()).isEqualTo(4);
             assertThat(store.verify().verified()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void cleanupIsBoundedAndContinuesWhenCompactionHasNoWork() throws Exception {
+        try (var store = SqliteEventStore.open(directory)) {
+            seed(store);
+            var budget = new MaintenanceBudget(100, 2, 5000, () -> false);
+            var plan = ScanPlan.of(
+                    1,
+                    new in.gravaxis.trace.core.geom.BlockBox(0, 0, 0, 10, 100, 10),
+                    T,
+                    T + 10,
+                    ScanPlan.Order.OLDEST_FIRST);
+            try (var reader = store.scan(plan)) {
+                assertThat(reader.next(new MutationBatch(1))).isTrue();
+                for (int i = 0; i < 3; i++)
+                    assertThat(store.compact(budget).state()).isEqualTo(MaintenanceResult.State.COMPLETED);
+                assertThat(shardFiles()).isEqualTo(7);
+            }
+            for (long remaining : new long[] {5, 3, 1}) {
+                assertThat(store.compact(budget).state()).isEqualTo(MaintenanceResult.State.NO_WORK);
+                assertThat(shardFiles()).isEqualTo(remaining);
+            }
+            assertThat(store.stats().sealedRows()).isEqualTo(4);
+        }
+    }
+
+    private long shardFiles() throws Exception {
+        try (var files = java.nio.file.Files.list(directory.resolve("shards"))) {
+            return files.count();
         }
     }
 
