@@ -144,6 +144,7 @@ tasks.register<JavaExec>("storageDensity") {
   description = "Measures SQLite page accounting using aggregates only; boots no server."
   classpath = sourceSets.main.get().runtimeClasspath
   mainClass.set("in.gravaxis.trace.bench.StorageDensity")
+  workingDir(rootProject.layout.projectDirectory)
   javaLauncher.set(javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(libs.versions.java.get().toInt()))
   })
@@ -154,7 +155,8 @@ tasks.register<JavaExec>("storageDensity") {
   outputs.upToDateWhen { false }
   argumentProviders.add(CommandLineArgumentProvider {
     listOf(privateInput.get(), output.get().asFile.absolutePath,
-      scratch.get().asFile.absolutePath)
+      scratch.get().asFile.absolutePath,
+      rootProject.layout.projectDirectory.dir("benchmarks/results/density").asFile.absolutePath)
   })
   maxHeapSize = "1g"
 }

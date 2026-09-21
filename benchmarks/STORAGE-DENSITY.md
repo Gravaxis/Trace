@@ -13,9 +13,10 @@ enables `query_only`, and never copies it. Gradle does not hash or cache the inp
 Omit the property for a synthetic-only run; private density then says not measured.
 
 The output is `benchmarks/build/density/report.json`, replaced with an explicit
-not-measured marker before each run. A completed aggregate report can be copied to
-`benchmarks/results/density/<timestamp>-<commit>/density.json` and committed after
-review. It is separate from the server benchmark table and does not replace it.
+not-measured marker before each run. The tool also creates its own commit-labelled
+directory under `benchmarks/results/density/`, with environment.json and density.json.
+Commit these generated files after review; do not create or rename directories.
+It is separate from the server benchmark table and does not replace it.
 Commit the tool first, then run it. The report records the execution commit and
 dirty state; do not describe uncommitted results as measurements.
 
@@ -34,7 +35,10 @@ Main-file length and WAL/SHM lengths are separate; physical filesystem allocatio
 is not measured. A changing live file is not a controlled density input.
 
 Trace uses seeded synthetic numeric IDs and the real append/seal implementation,
-with the event count, timestamp span and seal interval recorded. Positions, actors
+with the event count, timestamp span and seal interval recorded. Sealing modes
+are explicit: both full-window sealing and incremental bounded
+prefix sealing are measured. Their partition shapes differ and must not be merged
+into a single density claim. Positions, actors
 and states are synthetic, not sampled from the private input. Both timestamp spans
 use the same seal interval to expose partitioning effects. Trace accounting includes
 all generated manifest/hot/shard databases, including empty schema overhead.

@@ -61,11 +61,15 @@ class DensityReaderTest {
 
     @Test
     void traceUsesRealAppendAndSealAndCountsEveryGeneratedEvent() throws Exception {
-        Path scratch = directory.resolve("trace");
-        var reports = StorageDensity.measureTrace(scratch, 200, 1000, 50);
-        assertThat(reports.stream().mapToLong(DensityReader.Report::traceRows).sum())
-                .isEqualTo(200);
-        assertThat(reports.stream().filter(r -> r.traceRows() > 0).count()).isGreaterThan(1);
-        assertThat(reports).allSatisfy(r -> assertThat(r.unassignedBytes()).isZero());
+        for (boolean incremental : new boolean[] {false, true}) {
+            Path scratch = directory.resolve("trace-" + incremental);
+            var reports = StorageDensity.measureTrace(scratch, 200, 1000, 50, incremental);
+            assertThat(reports.stream()
+                            .mapToLong(DensityReader.Report::traceRows)
+                            .sum())
+                    .isEqualTo(200);
+            assertThat(reports.stream().filter(r -> r.traceRows() > 0).count()).isGreaterThan(1);
+            assertThat(reports).allSatisfy(r -> assertThat(r.unassignedBytes()).isZero());
+        }
     }
 }

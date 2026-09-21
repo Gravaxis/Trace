@@ -26,21 +26,33 @@ public final class StorageDensity {
     private StorageDensity() {}
 
     public static void main(String[] args) throws Exception {
+        boolean sourceDirty = git("status", "--porcelain")
+                .lines()
+                .anyMatch(line -> !line.isBlank() && !line.substring(3).startsWith("benchmarks/results/"));
+        Path archive = MeasurementRun.create(Path.of(args[3]), ":benchmarks:storageDensity");
         Path output = Path.of(args[1]);
         Files.createDirectories(output.getParent());
         Files.writeString(output, "{\"measured\":false,\"reason\":\"run did not complete\"}\n");
+        Files.copy(output, archive.resolve("density.json"));
         try {
             List<String> measurements = new ArrayList<>();
-            for (long span : new long[] {60_000, 3_600_000}) {
-                Path work = Files.createTempDirectory(
-                        Path.of(args[2]).toAbsolutePath().getParent(), "density-");
-                System.out.println("Measuring synthetic Trace fixture");
-                List<DensityReader.Report> reports = measureTrace(work, 100_000, span, 60_000);
-                measurements.add("{\"kind\":\"trace-synthetic\",\"seed\":" + SEED
-                        + ",\"events\":100000,\"spanMillis\":" + span + ",\"sealIntervalMillis\":60000,\"databases\":["
-                        + String.join(
-                                ",",
-                                reports.stream().map(DensityReader.Report::json).toList()) + "]}");
+            for (boolean incremental : new boolean[] {false, true}) {
+                for (long span : new long[] {60_000, 3_600_000}) {
+                    Path work = Files.createTempDirectory(
+                            Path.of(args[2]).toAbsolutePath().getParent(), "density-");
+                    System.out.println("Measuring synthetic Trace fixture");
+                    List<DensityReader.Report> reports = measureTrace(work, 100_000, span, 60_000, incremental);
+                    measurements.add("{\"kind\":\"trace-synthetic\",\"seed\":" + SEED
+                            + ",\"events\":100000,\"spanMillis\":" + span
+                            + ",\"sealIntervalMillis\":60000,\"sealMode\":"
+                            + quote(incremental ? "incremental-prefix-limit-4096" : "explicit-full-window")
+                            + ",\"databases\":["
+                            + String.join(
+                                    ",",
+                                    reports.stream()
+                                            .map(DensityReader.Report::json)
+                                            .toList()) + "]}");
+                }
             }
             if (args[0].isBlank()) {
                 measurements.add("{\"kind\":\"private-input\",\"measured\":false,\"reason\":\"not supplied\"}");
@@ -52,7 +64,7 @@ public final class StorageDensity {
             String report =
                     "{\"measured\":true,\"timestamp\":" + quote(Instant.now().toString())
                             + ",\"commit\":" + quote(git("rev-parse", "HEAD"))
-                            + ",\"dirty\":" + !git("status", "--porcelain").isBlank()
+                            + ",\"dirty\":" + sourceDirty
                             + ",\"jvm\":" + quote(System.getProperty("java.runtime.version"))
                             + ",\"os\":" + quote(System.getProperty("os.name"))
                             + ",\"cpu\":" + quote(System.getenv().getOrDefault("PROCESSOR_IDENTIFIER", "unknown"))
@@ -62,6 +74,7 @@ public final class StorageDensity {
                             + "\"limitations\":\"Different data and workloads; no equivalence, production density, migration savings, throughput or headline ratio established. Private input rerunnable only by its holder. Physical filesystem allocation is not measured.\","
                             + "\"measurements\":[" + String.join(",", measurements) + "]}\n";
             Files.writeString(output, report);
+            Files.writeString(archive.resolve("density.json"), report);
             System.out.println("Aggregate density report complete");
         } catch (Exception e) {
             // Deliberately do not propagate source SQL, paths or values to Gradle logs.
@@ -72,6 +85,11 @@ public final class StorageDensity {
 
     static List<DensityReader.Report> measureTrace(Path directory, int count, long spanMillis, long sealInterval)
             throws Exception {
+        return measureTrace(directory, count, spanMillis, sealInterval, false);
+    }
+
+    static List<DensityReader.Report> measureTrace(
+            Path directory, int count, long spanMillis, long sealInterval, boolean incremental) throws Exception {
         SplittableRandom random = new SplittableRandom(SEED);
         long base = TraceEpoch.EPOCH_MILLIS + 86_400_000;
         RecordBatch batch = new RecordBatch(1000);
@@ -83,7 +101,7 @@ public final class StorageDensity {
                 if (offset / sealInterval != window) {
                     store.append(batch, lsn++);
                     batch.clear();
-                    store.seal();
+                    sealFixture(store, incremental);
                     window = offset / sealInterval;
                 }
                 int actor = 16 + random.nextInt(100);
@@ -99,7 +117,7 @@ public final class StorageDensity {
                 }
             }
             store.append(batch, lsn);
-            store.seal();
+            sealFixture(store, incremental);
             if (store.stats().sealedRows() != count) throw new IllegalStateException("Trace fixture count mismatch");
         }
         List<DensityReader.Report> reports = new ArrayList<>();
@@ -110,6 +128,25 @@ public final class StorageDensity {
             }
         }
         return reports;
+    }
+
+    private static void sealFixture(SqliteEventStore store, boolean incremental) throws Exception {
+        if (!incremental) {
+            store.seal();
+            return;
+        }
+        long remaining = store.stats().hotRows();
+        long attempts = 0;
+        while (store.stats().hotRows() > 0 && attempts++ < remaining * 4 + 1) {
+            var result = store.maintain(
+                    in.gravaxis.trace.storage.MaintenanceOperation.SEAL,
+                    new in.gravaxis.trace.storage.MaintenanceBudget(100000, 8, 50, () -> false),
+                    0);
+            if (result.state() != in.gravaxis.trace.storage.MaintenanceResult.State.PROGRESSED
+                    && result.state() != in.gravaxis.trace.storage.MaintenanceResult.State.COMPLETED)
+                throw new IllegalStateException("Incremental seal did not execute");
+        }
+        if (store.stats().hotRows() != 0) throw new IllegalStateException("Incremental seal did not finish");
     }
 
     private static String git(String... args) throws Exception {
