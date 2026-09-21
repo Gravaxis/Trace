@@ -1286,11 +1286,8 @@ public final class SqliteEventStore implements EventStore {
             if (operation == MaintenanceOperation.RETAIN) {
                 long from = pending.sources.getFirst().min();
                 long to = pending.cutoff;
-                try (var s = writer.prepareStatement("DELETE FROM blob_ref WHERE ts>=? AND ts<?")) {
-                    s.setLong(1, from);
-                    s.setLong(2, to);
-                    s.executeUpdate();
-                }
+                // The exclusion also hides expired blob references. Reclaim them explicitly;
+                // deleting an arbitrary number here would defeat bounded publication.
                 try (var s = writer.prepareStatement("INSERT INTO exclusion(actor,from_ts,to_ts) VALUES(NULL,?,?)")) {
                     s.setLong(1, from);
                     s.setLong(2, to);
@@ -1495,7 +1492,9 @@ public final class SqliteEventStore implements EventStore {
 
     @Override
     public synchronized @Nullable String blobAt(int worldId, CursorPosition event) throws StoreException {
-        try (var s = writer.prepareStatement("SELECT blob_id FROM blob_ref WHERE w=? AND c=? AND ts=? AND seq=?")) {
+        try (var s = writer.prepareStatement("SELECT blob_id FROM blob_ref WHERE w=? AND c=? AND ts=? AND seq=?"
+                + " AND NOT EXISTS(SELECT 1 FROM exclusion WHERE (exclusion.actor IS NULL OR exclusion.actor=blob_ref.actor)"
+                + " AND blob_ref.ts>=from_ts AND blob_ref.ts<to_ts)")) {
             s.setInt(1, worldId);
             s.setLong(2, event.chunkKey());
             s.setLong(3, event.timestamp());
@@ -1512,6 +1511,9 @@ public final class SqliteEventStore implements EventStore {
     public synchronized long collectBlobs() throws StoreException {
         requireNoScans();
         try (var s = writer.createStatement()) {
+            s.executeUpdate(
+                    "DELETE FROM blob_ref WHERE EXISTS(SELECT 1 FROM exclusion WHERE"
+                            + " (exclusion.actor IS NULL OR exclusion.actor=blob_ref.actor) AND blob_ref.ts>=from_ts AND blob_ref.ts<to_ts)");
             return s.executeUpdate("DELETE FROM blob WHERE NOT EXISTS(SELECT 1 FROM blob_ref WHERE blob_id=blob.id)");
         } catch (SQLException e) {
             throw new StoreException(StoreException.Reason.INTERNAL, "Blob collection failed", e);

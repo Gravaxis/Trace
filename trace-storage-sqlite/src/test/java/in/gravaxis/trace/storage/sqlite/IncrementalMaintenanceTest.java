@@ -181,6 +181,13 @@ class IncrementalMaintenanceTest {
                     ShardMaintenanceTest.event(2, ShardMaintenanceTest.T + 1, 16));
             store.append(Events.batchOf(events), 0);
             store.seal();
+            String blob = store.putBlob(1, new byte[] {1, 2, 3});
+            var before = new in.gravaxis.trace.storage.CursorPosition(
+                    in.gravaxis.trace.core.geom.Morton.key(0, 0), ShardMaintenanceTest.T, 1);
+            var at = new in.gravaxis.trace.storage.CursorPosition(
+                    in.gravaxis.trace.core.geom.Morton.key(0, 0), ShardMaintenanceTest.T + 1, 2);
+            store.attachBlob(1, before, blob);
+            store.attachBlob(1, at, blob);
             try (var reader = store.scan(ShardMaintenanceTest.PLAN)) {
                 assertThat(reader.next(new MutationBatch(1))).isTrue();
                 assertThat(store.maintain(RETAIN, ONE, ShardMaintenanceTest.T + 1)
@@ -194,6 +201,10 @@ class IncrementalMaintenanceTest {
             var result = finish(store, RETAIN, ShardMaintenanceTest.T + 1);
             assertThat(result.state()).isEqualTo(COMPLETED);
             assertThat(result.rows()).isEqualTo(1);
+            assertThat(store.blobAt(1, before)).isNull();
+            assertThat(store.blobAt(1, at)).isEqualTo(blob);
+            assertThat(store.collectBlobs()).isZero();
+            assertThat(store.readBlob(blob)).containsExactly(1, 2, 3);
             assertThat(store.stats().sealedRows()).isEqualTo(1);
             var after = ScanPlan.of(
                     1,

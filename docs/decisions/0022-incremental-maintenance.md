@@ -9,6 +9,11 @@ Scheduled maintenance instead calls EventStore.maintain. ShardWork retains keyse
 cursors and digests while yielding to the consumer. Input size no longer needs to
 fit one step. Compaction selects a pair; retention selects one eligible sealed
 shard. Each seal freezes a bounded hot-row prefix; later appends remain hot.
+Retention publishes replay exclusions and refusal gaps with the shard swap. Those
+exclusions also hide matching blob references atomically; explicit collectBlobs
+reclaims their physical reference rows and unreferenced payloads. Publication does
+not execute an unbounded reference deletion. Other still-physical expired shards
+in that conservative gap window are refused until later passes reclaim them.
 Scheduled sealing replaces StoreConsumer's unbounded periodic seal. Explicit
 flush-and-seal still completes the entire hot window for a caller's read fence.
 
