@@ -1296,7 +1296,10 @@ public final class SqliteEventStore implements EventStore {
                 recordGap(
                         new GapRecord(from, to - 1, GapRecord.Reason.EXPIRED, pending.removed, "scheduled retention"));
             }
-            audit("STEP_" + operation, id, pending.copied);
+            audit(
+                    "STEP_" + operation,
+                    pending.copied > 0 ? id : 0,
+                    operation == MaintenanceOperation.RETAIN ? pending.removed : pending.copied);
             writer.commit();
             if (pending.copied > 0) pending.published();
             maintenanceProbe.accept("incremental.committed");
@@ -1658,7 +1661,7 @@ public final class SqliteEventStore implements EventStore {
                 }
                 saveDigest(id, digest);
             }
-            audit(remove ? "REMOVE" : "COMPACT", id, remove ? removed : copied);
+            audit(remove ? "REMOVE" : "COMPACT", copied > 0 ? id : 0, remove ? removed : copied);
             writer.commit();
             published = true;
             if (maintenance != null) maintenance.published = true;

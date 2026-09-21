@@ -50,3 +50,9 @@ force, commit, checkpoint and publication cannot be preempted safely by Java.
 Settings are safety choices, not measured optimums. Power loss, native-memory
 bounds, failing disks and arbitrary instruction interruption remain unproven.
 Process-kill gates cover an intermediate step, forced output and committed output.
+
+The final audit found that complete removal could record a future, unallocated
+output id, and incremental retention counted retained rows as affected. The
+regression first failed on that branch. Removal now records the removed count and
+uses shard_id=0 when no replacement exists, matching the existing no-shard audit
+convention. This correction changes audit values, not publication or recovery.

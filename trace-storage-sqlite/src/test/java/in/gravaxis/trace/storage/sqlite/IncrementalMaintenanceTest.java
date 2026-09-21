@@ -23,6 +23,33 @@ import org.junit.jupiter.api.io.TempDir;
 
 class IncrementalMaintenanceTest {
     @Test
+    void completeRemovalAuditCountsRemovedRowsAndDoesNotNameAFutureShard() throws Exception {
+        try (var store = SqliteEventStore.open(directory)) {
+            store.append(Events.batchOf(List.of(ShardMaintenanceTest.event(1, ShardMaintenanceTest.T, 16))), 0);
+            store.seal();
+            assertThat(finish(store, RETAIN, ShardMaintenanceTest.T + 1).rows()).isEqualTo(1);
+            store.append(Events.batchOf(List.of(ShardMaintenanceTest.event(2, ShardMaintenanceTest.T + 2, 16))), 1);
+            store.seal();
+            assertThat(store.purgeActor(16, ShardMaintenanceTest.T + 2, ShardMaintenanceTest.T + 3))
+                    .isEqualTo(1);
+            try (var c = DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("manifest.db"));
+                    var s = c.createStatement();
+                    var rows = s.executeQuery(
+                            "SELECT action,shard_id,affected FROM maintenance_audit WHERE action IN ('STEP_RETAIN','REMOVE') ORDER BY id")) {
+                for (String action : new String[] {"STEP_RETAIN", "REMOVE"}) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getString(1)).isEqualTo(action);
+                    assertThat(rows.getLong(2))
+                            .as("no replacement was published")
+                            .isZero();
+                    assertThat(rows.getLong(3)).as("removed, not retained rows").isEqualTo(1);
+                }
+                assertThat(rows.next()).isFalse();
+            }
+        }
+    }
+
+    @Test
     void scheduleActuallyQuarantinesRetriesCheckpointAndSeals() throws Exception {
         try (var store = SqliteEventStore.open(directory)) {
             store.append(Events.batchOf(List.of(ShardMaintenanceTest.event(1, ShardMaintenanceTest.T, 16))), 0);
