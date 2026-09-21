@@ -251,8 +251,13 @@ the final audit resolves them. M3 is **done**; M4 has not started.
 
 M4 implementation begins with the [real-client gate](docs/design/m4-client-gate.md),
 following the [file-level plan and self-review](docs/design/m4-capture-plan.md).
-Historical M2 notes above retain their original scope. Generated client evidence
-will identify the exact revised proof boundary; full capture remains incomplete.
+Historical M2 notes above retain their original scope. The committed
+[client evidence](benchmarks/results/client-capture/2026-09-21-094916-3dc19b5f3401/complete.json)
+passes actual creative-mode client break/place, cancellation, unchanged attempts
+and same-tick reversion on both pinned platforms. Each action asserts its capture
+branch, post-tick world state and exact exposed row content; Folia asserts separate
+region ownership. The client shares server packet codecs, so independent wire
+compatibility is not established. Full capture remains incomplete.
 
 Tracked in the ADRs rather than here, but the ones that shape upcoming work:
 

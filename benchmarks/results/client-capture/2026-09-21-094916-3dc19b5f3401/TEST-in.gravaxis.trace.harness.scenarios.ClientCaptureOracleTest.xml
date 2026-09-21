@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.harness.scenarios.ClientCaptureOracleTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-21T09:48:26.336Z" hostname="ISHWARS-PC" time="0.104">
+  <properties/>
+  <testcase name="equalCountsCannotHideWrongRowsOrDuplicateIdentities()" classname="in.gravaxis.trace.harness.scenarios.ClientCaptureOracleTest" time="0.072"/>
+  <testcase name="missingCountersAndWrongBranchesFail()" classname="in.gravaxis.trace.harness.scenarios.ClientCaptureOracleTest" time="0.007"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

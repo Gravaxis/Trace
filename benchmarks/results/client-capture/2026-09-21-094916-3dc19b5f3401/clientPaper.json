@@ -1,0 +1,36 @@
+{
+  "scenario": "client-capture",
+  "status": "PASS",
+  "params": {},
+  "details": {
+    "server.brand": "Paper",
+    "server.minecraftVersion": "26.2",
+    "server.version": "26.2-126-c646faf (MC: 26.2)",
+    "server.regionised": "false",
+    "java.version": "25.0.4+7-LTS-189",
+    "heap.maxBytes": "1073741824",
+    "area0.rows": "0:80:0:STONE:AIR:39fdb053-57e5-3cff-bbe3-99341a4c885c:1:1:1789984153492:0:13194139533312;2:80:0:AIR:DIRT:39fdb053-57e5-3cff-bbe3-99341a4c885c:2:1:1789984153542:0:13194139533312",
+    "area1.rows": "2048:80:2048:STONE:AIR:aae15ab0-2b65-365a-bb40-576fae6eb9ef:1:1:1789984154601:0:13194139582464;2050:80:2048:AIR:DIRT:aae15ab0-2b65-365a-bb40-576fae6eb9ef:2:1:1789984154747:0:13194139582464",
+    "client": "Real loopback TCP, in-process peer using pinned server codecs; no synthetic callEvent",
+    "limits": "Offline creative fixture; material-level capture; air attempt fires a natural event rejected at tick end. Shared codecs do not independently verify protocol. No production performance claim.",
+    "proof.complete": "true"
+  },
+  "metrics": [
+    {"name": "area0.captured", "value": 4, "unit": "records"},
+    {"name": "area0.published", "value": 2, "unit": "records"},
+    {"name": "area0.rejectedUnchanged", "value": 2, "unit": "records"},
+    {"name": "area0.dropped", "value": 0, "unit": "records"},
+    {"name": "area0.acknowledgedActions", "value": 5, "unit": "actions"},
+    {"name": "area1.captured", "value": 4, "unit": "records"},
+    {"name": "area1.published", "value": 2, "unit": "records"},
+    {"name": "area1.rejectedUnchanged", "value": 2, "unit": "records"},
+    {"name": "area1.dropped", "value": 0, "unit": "records"},
+    {"name": "area1.acknowledgedActions", "value": 5, "unit": "actions"},
+    {"name": "natural.breakEvents", "value": 6, "unit": "events"},
+    {"name": "natural.placeEvents", "value": 4, "unit": "events"},
+    {"name": "cancelled.events", "value": 2, "unit": "events"},
+    {"name": "reverted.events", "value": 2, "unit": "events"},
+    {"name": "unchanged.events", "value": 2, "unit": "events"}
+  ],
+  "failures": []
+}

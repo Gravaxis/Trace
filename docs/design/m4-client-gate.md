@@ -5,6 +5,10 @@ serially through TestServerService. `:benchmarks:clientCaptureEvidence` reruns t
 servers and the oracle unit tests and generates a commit-labelled report under
 `benchmarks/results/client-capture/`. Neither command reads the private database.
 
+The [clean-source evidence at 3dc19b5](../../benchmarks/results/client-capture/2026-09-21-094916-3dc19b5f3401/complete.json)
+passes both pinned servers and the oracle challenges. Its environment describes
+the collector JVM; each scenario describes the actual server JVM separately.
+
 ## Implementation and review
 
 The M4 plan proposed an external client runner. The implementation instead starts
