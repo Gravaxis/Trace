@@ -9,7 +9,6 @@
 package in.gravaxis.trace.runtime;
 
 import in.gravaxis.trace.capture.BlockCaptureListener;
-import in.gravaxis.trace.core.capture.CaptureLoss;
 import in.gravaxis.trace.core.capture.CaptureService;
 import in.gravaxis.trace.core.journal.JournalFrames;
 import in.gravaxis.trace.core.journal.JournalReader;
@@ -22,6 +21,7 @@ import in.gravaxis.trace.dictionary.BlockStateDictionary;
 import in.gravaxis.trace.dictionary.WorldDictionary;
 import in.gravaxis.trace.pipeline.StoreConsumer;
 import in.gravaxis.trace.rollback.RollbackService;
+import in.gravaxis.trace.storage.CaptureRecovery;
 import in.gravaxis.trace.storage.EventStore;
 import in.gravaxis.trace.storage.GapRecord;
 import in.gravaxis.trace.storage.RecordBatch;
@@ -139,18 +139,7 @@ public final class TraceRuntime implements AutoCloseable {
                     + floor + "; refusing to start rather than discard everything this run captures");
         }
         RecoveryReport recovery = recover(logger, journalDirectory, ringDirectory, store, journal);
-        Path lossFile = ringDirectory.resolve("capture.loss");
-        if (Files.exists(lossFile)) {
-            try (CaptureLoss losses = CaptureLoss.open(lossFile)) {
-                if (losses.toMillis() > 0)
-                    store.recordGap(new GapRecord(
-                            losses.fromMillis(),
-                            losses.toMillis(),
-                            GapRecord.Reason.OVERFLOW,
-                            losses.count(),
-                            "recovered persistent capture-loss bounds"));
-            }
-        }
+        CaptureRecovery.recordLoss(ringDirectory.resolve("capture.loss"), store);
 
         // Read before the consumer thread starts, while the store still has one user. An operation
         // left running by the last process is a world that is neither the old one nor the new one,

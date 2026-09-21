@@ -34,3 +34,12 @@ their scope is unchanged, and they do not measure first-use or exhaustion costs.
 
 This supersedes ADR-0012's statement that excess threads silently share the final
 slot, but leaves slot reclamation and spill work outstanding.
+
+## Follow-up proof, 2026-09-21
+
+StorageCrashTest now kills a child process after real CaptureService exhausts its
+slots and rejects an event, without closing its mapped loss marker. Two reopens
+use the same CaptureRecovery.recordLoss path as TraceRuntime startup and assert
+OVERFLOW count and bounds covering the rejected event. No generic crash gap is
+created in this test. The earlier lack of an exhaustion crash test is resolved
+for this process-kill branch, not for power loss or partial marker instructions.

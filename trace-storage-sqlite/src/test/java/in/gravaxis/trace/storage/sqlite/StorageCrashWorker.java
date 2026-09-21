@@ -8,6 +8,7 @@
 
 package in.gravaxis.trace.storage.sqlite;
 
+import in.gravaxis.trace.core.capture.CaptureService;
 import in.gravaxis.trace.core.geom.Morton;
 import in.gravaxis.trace.storage.CursorPosition;
 import in.gravaxis.trace.storage.testing.Events;
@@ -33,6 +34,48 @@ public final class StorageCrashWorker {
 
     public static void main(String[] args) throws Exception {
         Path directory = Path.of(args[0]);
+        if (args[1].equals("migration")) {
+            Path data = directory.resolve("store");
+            Files.createDirectories(data);
+            try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + data.resolve("manifest.db"))) {
+                SqliteSchema.createManifest(c);
+                try (var s = c.createStatement()) {
+                    s.execute("INSERT INTO meta VALUES('format_version','2'),('applied_lsn','123')");
+                }
+            }
+            try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + data.resolve("hot.db"))) {
+                SqliteSchema.createHot(c, "main");
+                try (var s = c.createStatement()) {
+                    s.execute("INSERT INTO hot_event VALUES(1,0,117964800000000000,0,1,2,16,1,1,123)");
+                }
+            }
+            try (var ignored = SqliteEventStore.open(data, phase -> {
+                if (phase.equals(args[2])) ready(directory, phase);
+            })) {
+                throw new AssertionError("Migration branch not reached");
+            }
+        }
+        if (args[1].equals("exhaustion")) {
+            // Intentionally not closed: the parent kills the process while the marker is mapped.
+            var capture = new CaptureService(directory.resolve("rings"), 4096);
+            for (int i = 0; i <= CaptureService.MAX_SLOTS; i++) {
+                final int x = i;
+                Thread producer = new Thread(() -> {
+                    capture.captureBlockChange(1, x, 64, 0, 1, 16, 1, 1);
+                    capture.confirmStaged((w, bx, by, bz) -> 2);
+                });
+                if (i == CaptureService.MAX_SLOTS)
+                    Files.writeString(directory.resolve("loss-start"), Long.toString(System.currentTimeMillis()));
+                producer.start();
+                producer.join();
+            }
+            if (capture.slotsExhausted() != 1
+                    || capture.droppedNoSlot() != 1
+                    || capture.published() != CaptureService.MAX_SLOTS
+                    || capture.rings().size() != CaptureService.MAX_SLOTS)
+                throw new AssertionError("Exhaustion branch not exercised exactly");
+            ready(directory, "exhaustion.rejected");
+        }
         try (var store = SqliteEventStore.open(directory.resolve("store"))) {
             store.append(Events.batchOf(List.of(ShardMaintenanceTest.event(1, ShardMaintenanceTest.T, 16))), 0);
             store.seal();

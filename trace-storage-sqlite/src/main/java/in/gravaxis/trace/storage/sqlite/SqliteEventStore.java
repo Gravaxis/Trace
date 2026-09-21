@@ -113,6 +113,11 @@ public final class SqliteEventStore implements EventStore {
      *     trace about a busy database
      */
     public static SqliteEventStore open(Path directory) throws StoreException {
+        return open(directory, phase -> {});
+    }
+
+    static SqliteEventStore open(Path directory, java.util.function.Consumer<String> migrationProbe)
+            throws StoreException {
         FileChannel lockChannel = null;
         FileLock lock = null;
         Connection connection = null;
@@ -129,7 +134,7 @@ public final class SqliteEventStore implements EventStore {
             int oldFormat = inspectFormat(connection);
             SqliteSchema.applyWritePragmas(connection);
             SqliteSchema.createManifest(connection);
-            migrateHot(connection, directory, oldFormat);
+            migrateHot(connection, directory, oldFormat, migrationProbe);
 
             SqliteEventStore store = new SqliteEventStore(directory, lockChannel, lock, connection);
             store.initialiseMeta();
@@ -177,7 +182,9 @@ public final class SqliteEventStore implements EventStore {
         }
     }
 
-    private static void migrateHot(Connection connection, Path directory, int oldFormat) throws SQLException {
+    private static void migrateHot(
+            Connection connection, Path directory, int oldFormat, java.util.function.Consumer<String> probe)
+            throws SQLException {
         boolean legacy = oldFormat < 3 && Files.isRegularFile(directory.resolve("hot.db"));
         if (legacy) {
             try (Statement statement = connection.createStatement()) {
@@ -190,10 +197,12 @@ public final class SqliteEventStore implements EventStore {
             SqliteSchema.createHot(connection, HOT_SCHEMA);
             try (Statement statement = connection.createStatement()) {
                 if (legacy) statement.executeUpdate("INSERT INTO main.hot_event SELECT * FROM legacy.hot_event");
+                if (legacy) probe.accept("migration.copied");
                 statement.executeUpdate(
                         "INSERT INTO meta(k,v) VALUES('format_version','3') ON CONFLICT(k) DO UPDATE SET v=excluded.v");
             }
             connection.commit();
+            if (legacy) probe.accept("migration.committed");
         } catch (SQLException e) {
             connection.rollback();
             throw e;

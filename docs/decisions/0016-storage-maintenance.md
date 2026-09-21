@@ -57,3 +57,10 @@ maintenance budgets/cancellation, automatic scheduling/configuration, and large
 dataset memory/latency gates are not established. The plan's additive multiset
 accumulator is not implemented; complete-field oracle tests and row counts are
 the current preservation checks, alongside seal digests.
+
+## Migration follow-up proof, 2026-09-21
+
+StorageCrashTest kills migration after copying legacy rows inside the transaction
+and after commit. It checks the old/new format before recovery, then exact row
+fields and the applied watermark after two reopens. These two boundaries now have
+process-kill proof; arbitrary instruction interruption and power loss remain open.
