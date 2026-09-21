@@ -1,0 +1,11 @@
+{
+  "task": "crashRollbackPaper",
+  "server": "paper 26.2 build 126",
+  "seed": 20260921,
+  "iterations": 1,
+  "killDelayRangeMs": [100, 100],
+  "outcomes": [{"iteration": 0, "killDelayMs": 100, "verified": true, "lossy": false, "recordedEvents": -1, "lostEvents": -1}],
+  "lossyIterations": 0,
+  "minLossyIterations": 0,
+  "failures": 0
+}

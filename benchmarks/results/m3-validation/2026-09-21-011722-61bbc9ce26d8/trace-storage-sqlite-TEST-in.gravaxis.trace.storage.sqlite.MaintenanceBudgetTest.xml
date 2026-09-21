@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.storage.sqlite.MaintenanceBudgetTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-21T01:06:48.204Z" hostname="ISHWARS-PC" time="0.334">
+  <properties/>
+  <testcase name="admitsSubsetDefersOversizeAndCancelsAfterOutputWithoutPublishing()" classname="in.gravaxis.trace.storage.sqlite.MaintenanceBudgetTest" time="0.127"/>
+  <testcase name="sqliteVmCallbackAndDeadlineEachTakeTheirOwnStopBranch()" classname="in.gravaxis.trace.storage.sqlite.MaintenanceBudgetTest" time="0.019"/>
+  <testcase name="scheduleAssertsDisabledBusyCompletionAndRetentionOptIn()" classname="in.gravaxis.trace.storage.sqlite.MaintenanceBudgetTest" time="0.095"/>
+  <testcase name="cooperativeCancellationInterruptsWorkAndCleanupAllowsNextPass()" classname="in.gravaxis.trace.storage.sqlite.MaintenanceBudgetTest" time="0.09"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

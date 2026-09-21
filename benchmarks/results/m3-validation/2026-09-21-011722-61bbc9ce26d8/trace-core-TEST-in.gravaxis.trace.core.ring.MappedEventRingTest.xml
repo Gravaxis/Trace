@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.core.ring.MappedEventRingTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-21T00:12:36.800Z" hostname="ISHWARS-PC" time="0.081">
+  <properties/>
+  <testcase name="a producer thread and a consumer thread never tear a record" classname="in.gravaxis.trace.core.ring.MappedEventRingTest" time="0.065"/>
+  <testcase name="a full ring refuses rather than blocking the thread that is offering" classname="in.gravaxis.trace.core.ring.MappedEventRingTest" time="0.004"/>
+  <testcase name="records published but not consumed survive the process that wrote them" classname="in.gravaxis.trace.core.ring.MappedEventRingTest" time="0.007"/>
+  <testcase name="records come out in the order they went in, unchanged" classname="in.gravaxis.trace.core.ring.MappedEventRingTest" time="0.005"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,25 @@
+{
+  "scenario": "rollback-resume",
+  "status": "PASS",
+  "params": {},
+  "details": {
+    "server.brand": "Paper",
+    "server.minecraftVersion": "26.2",
+    "server.version": "26.2-126-c646faf (MC: 26.2)",
+    "server.regionised": "false",
+    "java.version": "25.0.4+7-LTS-189",
+    "heap.maxBytes": "1073741824",
+    "areas": "6",
+    "blocks": "240",
+    "rollback.interrupted": "op=1 state=CANCELLED applied=40 already=0 mismatched=0 chunks=1 scanned=40",
+    "rollback.unfinished": "id=1 state=CANCELLED applied=40 scanned=40",
+    "rollback.resumed": "op=1 state=DONE applied=200 already=0 mismatched=0 chunks=5 scanned=200 totalApplied=240 totalMismatched=0 totalScanned=240",
+    "world.verified": "true"
+  },
+  "metrics": [
+    {"name": "rollback.appliedFirstRun", "value": 40, "unit": "count"},
+    {"name": "rollback.appliedResumedRun", "value": 200, "unit": "count"},
+    {"name": "world.restored", "value": 240, "unit": "count"}
+  ],
+  "failures": []
+}

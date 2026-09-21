@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.storage.sqlite.BlobStorageTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-21T01:06:47.732Z" hostname="ISHWARS-PC" time="0.47">
+  <properties/>
+  <testcase name="corruptedPayloadCannotBeReadOrAttachedAndMissingEventIsRejected()" classname="in.gravaxis.trace.storage.sqlite.BlobStorageTest" time="0.333"/>
+  <testcase name="opaquePayloadAndReferenceSurviveReopenMergeAndPartialPurge()" classname="in.gravaxis.trace.storage.sqlite.BlobStorageTest" time="0.116"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
