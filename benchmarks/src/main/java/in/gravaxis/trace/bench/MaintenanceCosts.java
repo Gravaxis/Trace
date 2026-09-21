@@ -37,10 +37,12 @@ public final class MaintenanceCosts {
         Path report = output.resolve("measurements.json");
         Files.writeString(report, "{\"measured\":false,\"reason\":\"run incomplete\"}\n");
         List<String> cases = new ArrayList<>();
+        List<String> phases = new ArrayList<>();
         for (int count : new int[] {10_000, 100_000, 500_000}) {
             System.out.println("Maintenance fixture input rows: " + count);
             cases.add(measure(Files.createTempDirectory(scratch, "run-"), count, 60_000));
             cases.add(measure(Files.createTempDirectory(scratch, "run-"), count, 50));
+            phases.add(measurePhases(Files.createTempDirectory(scratch, "phases-"), count));
         }
         Files.writeString(
                 report,
@@ -48,8 +50,64 @@ public final class MaintenanceCosts {
                         + "\"samplingParkNanos\":2000000,\"maxInputRows\":1000000,"
                         + "\"scope\":\"Real CaptureService, StoreConsumer, journal, SQLite; synthetic states/actors; no Bukkit dispatch, world reads, dictionaries or blobs.\","
                         + "\"limits\":\"Sampled heap/backlog are observed maxima, not true peaks. Heap excludes native SQLite and mapped pages. Elapsed includes consumer drain and scheduling. No production latency or throughput claim.\","
-                        + "\"cases\":[" + String.join(",", cases) + "]}\n");
+                        + "\"cases\":[" + String.join(",", cases) + "],\"isolatedPhases\":[" + String.join(",", phases)
+                        + "]}\n");
         System.out.println("Generated maintenance report: " + output);
+    }
+
+    private static String measurePhases(Path directory, int count) throws Exception {
+        try (var store = SqliteEventStore.open(directory)) {
+            var batch = new RecordBatch(1000);
+            long lsn = 0;
+            for (int i = 0; i < count; i++) {
+                batch.add(
+                        EventRecords.packPosition(i % 1024, 64, i / 1024),
+                        EventRecords.packStates(1, 2, 0),
+                        EventRecords.packActorTime(86_400_000L + i, 16),
+                        EventRecords.packMetadata(i & 65535, 1, 1, 1, 16, 0));
+                if (batch.isFull()) {
+                    store.append(batch, lsn++);
+                    batch.clear();
+                }
+            }
+            if (batch.count() > 0) store.append(batch, lsn);
+            List<String> results = new ArrayList<>();
+            var budget = new in.gravaxis.trace.storage.MaintenanceBudget(1024, 2, 50, () -> false);
+            for (var operation : new in.gravaxis.trace.storage.MaintenanceOperation[] {
+                in.gravaxis.trace.storage.MaintenanceOperation.SEAL,
+                in.gravaxis.trace.storage.MaintenanceOperation.VERIFY,
+                in.gravaxis.trace.storage.MaintenanceOperation.CHECKPOINT
+            }) {
+                long total = 0, maximum = 0, progressed = 0, completed = 0, steps = 0;
+                boolean done = false;
+                while (!done && steps < count * 4L) {
+                    long start = System.nanoTime();
+                    var result = store.maintain(operation, budget, 0);
+                    long elapsed = System.nanoTime() - start;
+                    total += elapsed;
+                    maximum = Math.max(maximum, elapsed);
+                    steps++;
+                    if (result.state() == in.gravaxis.trace.storage.MaintenanceResult.State.PROGRESSED) progressed++;
+                    else if (result.state() == in.gravaxis.trace.storage.MaintenanceResult.State.COMPLETED) completed++;
+                    else if (result.state() == in.gravaxis.trace.storage.MaintenanceResult.State.NO_WORK) done = true;
+                    else throw new IllegalStateException("Unexpected phase outcome " + result.state());
+                    if (operation == in.gravaxis.trace.storage.MaintenanceOperation.CHECKPOINT) done = true;
+                }
+                if (!done
+                        || completed == 0
+                        || (operation != in.gravaxis.trace.storage.MaintenanceOperation.CHECKPOINT && progressed == 0))
+                    throw new IllegalStateException("Phase branch not exercised " + operation);
+                results.add("{\"operation\":\"" + operation + "\",\"steps\":" + steps + ",\"progressed\":" + progressed
+                        + ",\"completed\":" + completed + ",\"totalNanos\":" + total + ",\"maxStepNanos\":" + maximum
+                        + "}");
+            }
+            if (store.stats().hotRows() != 0
+                    || store.stats().sealedRows() != count
+                    || store.verify().verified() != store.stats().shardCount())
+                throw new IllegalStateException("Phase output invalid");
+            return "{\"inputRows\":" + count + ",\"rowBudget\":1024,\"millisBudget\":50,\"phases\":["
+                    + String.join(",", results) + "]}";
+        }
     }
 
     static String measure(Path work, int count, long budgetMillis) throws Exception {
@@ -93,9 +151,7 @@ public final class MaintenanceCosts {
                 long elapsed;
                 long firstActivePublished = -1, lastActivePublished = -1;
                 try {
-                    while (consumer.maintenanceCompleted() == 0
-                            && consumer.maintenanceDeferred() == 0
-                            && System.nanoTime() - start < 90_000_000_000L) {
+                    while (consumer.maintenanceCompleted() == 0 && System.nanoTime() - start < 90_000_000_000L) {
                         boolean active = consumer.maintenanceInProgress();
                         long seen = capture.published();
                         if (active) {
@@ -109,7 +165,7 @@ public final class MaintenanceCosts {
                         LockSupport.parkNanos(2_000_000);
                     }
                     elapsed = System.nanoTime() - start;
-                    if (consumer.maintenanceCompleted() == 0 && consumer.maintenanceDeferred() == 0)
+                    if (consumer.maintenanceCompleted() == 0)
                         throw new IllegalStateException(
                                 "No scheduled compaction attempted: " + consumer.maintenanceStatus());
                     if (budgetMillis == 60_000 && consumer.maintenanceCompleted() == 0)
@@ -128,10 +184,11 @@ public final class MaintenanceCosts {
                     throw new IllegalStateException("Capture/store branch was not healthy");
                 if (firstActivePublished < 0 || lastActivePublished <= firstActivePublished)
                     throw new IllegalStateException("No observed capture publication during maintenance");
-                int expectedShards = consumer.maintenanceCompleted() > 0 ? 1 : 8;
-                if (store.stats().shardCount() != expectedShards
-                        || store.stats().sealedRows() != count)
-                    throw new IllegalStateException("Scheduled compaction did not preserve input row count");
+                long expectedShards = store.stats().shardCount();
+                if (consumer.maintenanceCompleted() == 0
+                        || store.stats().sealedRows() < count
+                        || store.stats().sealedRows() + store.stats().hotRows() != count + stored)
+                    throw new IllegalStateException("Scheduled work did not preserve seeded and captured rows");
                 if (store.verify().verified() != expectedShards)
                     throw new IllegalStateException("Output did not verify");
                 return "{\"inputRows\":" + count + ",\"elapsedNanos\":" + elapsed

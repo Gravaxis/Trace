@@ -12,6 +12,9 @@ package in.gravaxis.trace.storage;
 public record MaintenanceResult(State state, long rows) {
     public enum State {
         COMPLETED,
+        PROGRESSED,
+        QUARANTINED,
+        UNVERIFIED,
         NO_WORK,
         DEFERRED,
         CANCELLED

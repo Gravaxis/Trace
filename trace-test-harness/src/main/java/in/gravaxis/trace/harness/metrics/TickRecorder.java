@@ -71,6 +71,10 @@ public final class TickRecorder implements Listener {
                 .metric(prefix + ".max", sorted[sorted.length - 1], "ms");
     }
 
+    public synchronized int sampleCount() {
+        return count;
+    }
+
     private static double percentile(double[] sorted, double percentile) {
         int index = (int) Math.ceil(percentile / 100.0 * sorted.length) - 1;
         return sorted[Math.clamp(index, 0, sorted.length - 1)];

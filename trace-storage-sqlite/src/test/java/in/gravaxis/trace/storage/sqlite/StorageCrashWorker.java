@@ -93,7 +93,13 @@ public final class StorageCrashWorker {
                 if (!phase.equals(args[2])) return;
                 ready(directory, phase);
             });
-            if (args[1].equals("compact")) store.compact();
+            if (args[1].equals("incremental")) {
+                for (int i = 0; i < 100; i++)
+                    store.maintain(
+                            in.gravaxis.trace.storage.MaintenanceOperation.COMPACT,
+                            new in.gravaxis.trace.storage.MaintenanceBudget(1, 2, 5000, () -> false),
+                            0);
+            } else if (args[1].equals("compact")) store.compact();
             else store.purgeActor(16, ShardMaintenanceTest.T, ShardMaintenanceTest.T + 100);
             throw new AssertionError("Requested crash branch was never reached");
         }

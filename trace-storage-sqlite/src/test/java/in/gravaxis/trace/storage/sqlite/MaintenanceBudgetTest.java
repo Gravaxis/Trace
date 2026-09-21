@@ -152,9 +152,11 @@ class MaintenanceBudgetTest {
                     new MaintenanceSchedule(store, new MaintenancePolicy(true, 1, 100, 8, 5000, 1), () -> false, T);
             retention.tick(T + 8, false);
             retention.tick(T + 9, false);
-            assertThat(retention.completed()).isEqualTo(1);
+            assertThat(store.gapsBetween(T, T + 4)).isEmpty();
+            for (int i = 10; i < 40; i++) retention.tick(T + i, false);
+            assertThat(retention.completed()).isPositive();
             assertThat(store.stats().sealedRows()).isZero();
-            assertThat(store.gapsBetween(T, T + 4)).hasSize(1);
+            assertThat(store.gapsBetween(T, T + 4)).isNotEmpty();
         }
     }
 }

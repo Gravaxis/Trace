@@ -16,10 +16,21 @@ It seeds sealed synthetic block rows with the real append/seal path, then uses
 real CaptureService, JournalWriter and StoreConsumer. The producer first publishes
 a batch, waits for scheduled compaction to start, then keeps publishing bursts.
 This deliberately tests overlap, not a steady-state arrival process. Completion
-and cooperative-budget runs use the same dataset generator. Admission limits are
-fixture settings. The short-budget run records whichever terminal branch occurred;
-the completion fixture must actually merge. Both must observe capture publishing
-during maintenance, retain the input row count and pass output verification.
+and cooperative-budget runs use the same dataset generator. Row budgets are
+fixture settings. Both runs must now complete a pairwise incremental merge;
+the earlier abort/defer reports retain their original meaning. Both must observe
+capture publication during maintenance and preserve seeded plus stored capture
+rows. The scheduler may proceed to later phases before the observer stops it;
+all resulting live shards must verify. No-work or checkpoint completion cannot
+stand in for compaction: the observer uses the separate compaction counter.
+
+Isolated phase fixtures measure incremental seal, content verify and checkpoint
+separately, recording total and maximum observed call duration and branch counts.
+Seal/verify must exercise both progress and completion; output count and verification
+are checked. These fixtures do not include concurrent capture. The server evidence
+also records ticks over the synthetic scheduled scenario's whole capture/seal/wait
+window, including mixed regions on Folia. It has no control arm and cannot assign
+causal tick overhead to maintenance.
 
 Each raw sample is elapsed nanoseconds, pending ring records, used Java heap,
 maintenance-active flag, and published capture counter. Sampled maxima are not

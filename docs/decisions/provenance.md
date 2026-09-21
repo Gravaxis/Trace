@@ -188,3 +188,12 @@ The off-server maintenance runner uses slf4j-api 2.0.17, matching the pinned Pap
 API POM (local Gradle cache). javap verified NOPLogger.NOP_LOGGER in that jar. It
 loads StoreConsumer directly without Bukkit; no server implementation is bundled
 into the benchmark.
+
+## 2026-09-21 — incremental maintenance observations
+
+IncrementalMaintenanceTest exercises the pinned sqlite-jdbc 3.49.1.0 through JDBC:
+TRUNCATE checkpoint with busy_timeout=0 returns a busy status while a real manifest
+read transaction is pinned; retry after release reports success and leaves an empty
+WAL. This is a tested behavior of the pinned engine, not an inferred hard deadline.
+The new scheduled tick measurements reuse TickRecorder's already pinned Paper/Folia
+event API. No new Minecraft API or forbidden project source was needed.

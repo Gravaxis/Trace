@@ -31,6 +31,10 @@ import org.jspecify.annotations.Nullable;
  */
 public interface EventStore extends AutoCloseable {
 
+    /** Advances unpublished work, retaining progress across calls; cutoff applies only to RETAIN. */
+    MaintenanceResult maintain(MaintenanceOperation operation, MaintenanceBudget budget, long cutoff)
+            throws StoreException;
+
     /** Bounded compaction; admitted work may be a subset of live shards. */
     MaintenanceResult compact(MaintenanceBudget budget) throws StoreException;
 

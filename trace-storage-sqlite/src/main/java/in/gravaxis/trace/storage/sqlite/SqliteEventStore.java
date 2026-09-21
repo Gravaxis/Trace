@@ -16,6 +16,7 @@ import in.gravaxis.trace.storage.CursorPosition;
 import in.gravaxis.trace.storage.EventStore;
 import in.gravaxis.trace.storage.GapRecord;
 import in.gravaxis.trace.storage.MaintenanceBudget;
+import in.gravaxis.trace.storage.MaintenanceOperation;
 import in.gravaxis.trace.storage.MaintenanceResult;
 import in.gravaxis.trace.storage.MutationCursor;
 import in.gravaxis.trace.storage.OperationProgress;
@@ -93,6 +94,9 @@ public final class SqliteEventStore implements EventStore {
 
     private long appliedLsn;
     private int activeScans;
+    private @Nullable ShardWork work;
+    private @Nullable MaintenanceOperation workOperation;
+    private long lastVerified;
     private @Nullable MaintenanceControl maintenance;
 
     private void checkMaintenance() throws SQLException {
@@ -353,6 +357,7 @@ public final class SqliteEventStore implements EventStore {
 
     @Override
     public synchronized long seal() throws StoreException {
+        discardWork();
         try {
             long maxRowId;
             long minTs;
@@ -825,6 +830,7 @@ public final class SqliteEventStore implements EventStore {
 
     @Override
     public synchronized void close() throws StoreException {
+        discardWork();
         StoreException failure = null;
         try {
             try (Statement statement = writer.createStatement()) {
@@ -1042,6 +1048,7 @@ public final class SqliteEventStore implements EventStore {
 
     @Override
     public synchronized void quarantineShard(long id, String detail) throws StoreException {
+        discardWork();
         requireNoScans();
         try {
             ShardRef target = null;
@@ -1101,6 +1108,209 @@ public final class SqliteEventStore implements EventStore {
 
     private record RetiredFile(long id, String name) {}
 
+    private void discardWork() throws StoreException {
+        ShardWork pending = work;
+        work = null;
+        workOperation = null;
+        if (pending != null) {
+            try {
+                pending.close();
+            } catch (SQLException | IOException e) {
+                throw new StoreException(StoreException.Reason.DISK, "Discarding unpublished maintenance failed", e);
+            }
+        }
+    }
+
+    @Override
+    public synchronized MaintenanceResult maintain(
+            MaintenanceOperation operation, MaintenanceBudget budget, long cutoff) throws StoreException {
+        if (budget.cancelled().getAsBoolean() || Thread.currentThread().isInterrupted()) {
+            discardWork();
+            return new MaintenanceResult(MaintenanceResult.State.CANCELLED, 0);
+        }
+        if (workOperation != null && workOperation != operation)
+            throw new StoreException(
+                    StoreException.Reason.CONTENDED, "Finish or cancel the active maintenance phase first");
+        if (operation == MaintenanceOperation.CHECKPOINT) return checkpointMaintenance();
+        if ((operation == MaintenanceOperation.RETAIN || operation == MaintenanceOperation.VERIFY) && activeScans > 0)
+            return new MaintenanceResult(MaintenanceResult.State.DEFERRED, 0);
+        try {
+            ShardWork pending = work;
+            if (pending == null) {
+                List<ShardWork.Source> inputs = new ArrayList<>();
+                long hotEnd = 0;
+                if (operation == MaintenanceOperation.SEAL) {
+                    // Freeze a bounded prefix without holding a manifest read transaction between calls.
+                    try (var s = writer.prepareStatement("SELECT rowid FROM hot_event ORDER BY rowid LIMIT ?")) {
+                        s.setLong(1, Math.min(4096, budget.maxInputRows()));
+                        try (var r = s.executeQuery()) {
+                            while (r.next()) hotEnd = r.getLong(1);
+                        }
+                    }
+                    if (hotEnd == 0) return new MaintenanceResult(MaintenanceResult.State.NO_WORK, 0);
+                } else {
+                    String predicate = operation == MaintenanceOperation.VERIFY
+                            ? " AND id>?"
+                            : operation == MaintenanceOperation.RETAIN ? " AND min_ts<?" : "";
+                    try (var s = writer.prepareStatement(
+                            "SELECT id,file,base_ts,row_count,min_ts,max_ts FROM shard WHERE state=0" + predicate
+                                    + " ORDER BY id LIMIT ?")) {
+                        int param = 1;
+                        if (operation == MaintenanceOperation.VERIFY) s.setLong(param++, lastVerified);
+                        if (operation == MaintenanceOperation.RETAIN) s.setLong(param++, cutoff);
+                        s.setInt(param, operation == MaintenanceOperation.COMPACT ? 2 : 1);
+                        try (var r = s.executeQuery()) {
+                            while (r.next())
+                                inputs.add(new ShardWork.Source(
+                                        r.getLong(1),
+                                        shardDirectory.resolve(r.getString(2)),
+                                        r.getLong(3),
+                                        r.getLong(4),
+                                        r.getLong(5),
+                                        r.getLong(6),
+                                        expectedDigest(r.getLong(1))));
+                        }
+                    }
+                    if (inputs.isEmpty() || (operation == MaintenanceOperation.COMPACT && inputs.size() < 2)) {
+                        if (operation == MaintenanceOperation.VERIFY) lastVerified = 0;
+                        sweepBounded(budget);
+                        return new MaintenanceResult(MaintenanceResult.State.NO_WORK, 0);
+                    }
+                }
+                pending = new ShardWork(
+                        inputs,
+                        shardDirectory.resolve("work-" + java.util.UUID.randomUUID() + ".db"),
+                        operation == MaintenanceOperation.VERIFY,
+                        hotEnd,
+                        operation == MaintenanceOperation.RETAIN ? cutoff : Long.MIN_VALUE);
+                work = pending;
+                workOperation = operation;
+            }
+            long processed = pending.step(writer, budget);
+            maintenanceProbe.accept("incremental.step");
+            if (budget.cancelled().getAsBoolean() || Thread.currentThread().isInterrupted()) {
+                discardWork();
+                return new MaintenanceResult(MaintenanceResult.State.CANCELLED, 0);
+            }
+            if (!pending.done) return new MaintenanceResult(MaintenanceResult.State.PROGRESSED, processed);
+            if (pending.verifyOnly) {
+                lastVerified = pending.sources.getFirst().id();
+                boolean trusted = pending.sources.getFirst().digest() != null;
+                discardWork();
+                return new MaintenanceResult(
+                        trusted ? MaintenanceResult.State.COMPLETED : MaintenanceResult.State.UNVERIFIED, processed);
+            }
+            maintenanceProbe.accept("incremental.output-forced");
+            if (budget.cancelled().getAsBoolean() || Thread.currentThread().isInterrupted()) {
+                discardWork();
+                return new MaintenanceResult(MaintenanceResult.State.CANCELLED, 0);
+            }
+            publishWork(pending, operation);
+            long rows = operation == MaintenanceOperation.RETAIN ? pending.removed : pending.copied;
+            discardWork();
+            sweepBounded(budget);
+            return new MaintenanceResult(MaintenanceResult.State.COMPLETED, rows);
+        } catch (SQLException | IOException e) {
+            ShardWork pending = work;
+            long damaged = operation == MaintenanceOperation.VERIFY && pending != null ? pending.failingShard : 0;
+            discardWork();
+            if (damaged != 0) {
+                lastVerified = damaged;
+                quarantineShard(damaged, "scheduled content verification failed");
+                return new MaintenanceResult(MaintenanceResult.State.QUARANTINED, 0);
+            }
+            throw new StoreException(StoreException.Reason.INTERNAL, "Incremental maintenance failed", e);
+        } catch (StoreException e) {
+            discardWork();
+            throw e;
+        }
+    }
+
+    private void sweepBounded(MaintenanceBudget budget) throws StoreException {
+        maintenance = new MaintenanceControl(budget);
+        try {
+            sweepRetired();
+        } finally {
+            maintenance = null;
+        }
+    }
+
+    private MaintenanceResult checkpointMaintenance() throws StoreException {
+        try (var s = writer.createStatement()) {
+            s.execute("PRAGMA busy_timeout=0");
+            try (var r = s.executeQuery("PRAGMA wal_checkpoint(TRUNCATE)")) {
+                if (!r.next()) throw new SQLException("Missing checkpoint status");
+                return new MaintenanceResult(
+                        r.getInt(1) == 0 ? MaintenanceResult.State.COMPLETED : MaintenanceResult.State.DEFERRED, 0);
+            } finally {
+                s.execute("PRAGMA busy_timeout=5000");
+            }
+        } catch (SQLException e) {
+            throw new StoreException(StoreException.Reason.DISK, "Checkpoint failed", e);
+        }
+    }
+
+    private void publishWork(ShardWork pending, MaintenanceOperation operation)
+            throws SQLException, IOException, StoreException {
+        writer.setAutoCommit(false);
+        try {
+            for (var source : pending.sources) {
+                try (var s = writer.prepareStatement("UPDATE shard SET state=1 WHERE id=? AND state=0")) {
+                    s.setLong(1, source.id());
+                    if (s.executeUpdate() != 1) throw new SQLException("Maintenance input changed before publication");
+                }
+            }
+            long id = nextShardId();
+            if (pending.copied > 0) {
+                try (var s = writer.prepareStatement("INSERT INTO shard VALUES(?,?,?,?,?,?,?,?,?)")) {
+                    s.setLong(1, id);
+                    s.setString(2, pending.output.getFileName().toString());
+                    s.setLong(3, 0);
+                    s.setLong(4, pending.min);
+                    s.setLong(5, pending.max);
+                    s.setLong(6, pending.copied);
+                    s.setLong(7, Files.size(pending.output));
+                    s.setInt(8, 0);
+                    s.setLong(9, System.currentTimeMillis());
+                    s.executeUpdate();
+                }
+                saveDigest(id, pending.content);
+            }
+            if (pending.hotEnd > 0) {
+                try (var s = writer.prepareStatement("DELETE FROM hot_event WHERE rowid<=?")) {
+                    s.setLong(1, pending.hotEnd);
+                    if (s.executeUpdate() != pending.copied)
+                        throw new SQLException("Hot prefix changed before publication");
+                }
+            }
+            if (operation == MaintenanceOperation.RETAIN) {
+                long from = pending.sources.getFirst().min();
+                long to = pending.cutoff;
+                try (var s = writer.prepareStatement("DELETE FROM blob_ref WHERE ts>=? AND ts<?")) {
+                    s.setLong(1, from);
+                    s.setLong(2, to);
+                    s.executeUpdate();
+                }
+                try (var s = writer.prepareStatement("INSERT INTO exclusion(actor,from_ts,to_ts) VALUES(NULL,?,?)")) {
+                    s.setLong(1, from);
+                    s.setLong(2, to);
+                    s.executeUpdate();
+                }
+                recordGap(
+                        new GapRecord(from, to - 1, GapRecord.Reason.EXPIRED, pending.removed, "scheduled retention"));
+            }
+            audit("STEP_" + operation, id, pending.copied);
+            writer.commit();
+            if (pending.copied > 0) pending.published();
+            maintenanceProbe.accept("incremental.committed");
+        } catch (SQLException | StoreException | RuntimeException e) {
+            rollbackQuietly();
+            throw e;
+        } finally {
+            setAutoCommitQuietly();
+        }
+    }
+
     @Override
     public synchronized long compact() throws StoreException {
         return requireFinished(compact(MaintenanceBudget.defaults()));
@@ -1127,6 +1337,7 @@ public final class SqliteEventStore implements EventStore {
     private MaintenanceResult boundedRewrite(
             @Nullable Integer actor, long from, long to, boolean remove, MaintenanceBudget budget)
             throws StoreException {
+        discardWork();
         MaintenanceControl control = new MaintenanceControl(budget);
         maintenance = control;
         try {

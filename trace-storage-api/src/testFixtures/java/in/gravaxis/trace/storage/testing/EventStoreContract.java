@@ -410,6 +410,15 @@ public abstract class EventStoreContract {
 
     @Test
     void compactionPreservesEveryFieldAndStoredSuffixInBothDirections() throws Exception {
+        checkCompaction(false);
+    }
+
+    @Test
+    void incrementalCompactionPreservesEveryFieldAndStoredSuffixInBothDirections() throws Exception {
+        checkCompaction(true);
+    }
+
+    private void checkCompaction(boolean incremental) throws Exception {
         List<Events> all = new ArrayList<>();
         for (int shard = 0; shard < 3; shard++) {
             List<Events> part = new ArrayList<>();
@@ -441,7 +450,22 @@ public abstract class EventStoreContract {
             assertThat(cursor.next(new MutationBatch(2))).isTrue();
             newestMark = cursor.position();
         }
-        assertThat(store.compact()).isEqualTo(all.size());
+        if (incremental) {
+            int progressed = 0, completed = 0;
+            for (int attempt = 0; attempt < 100 && store.stats().shardCount() > 1; attempt++) {
+                var result = store.maintain(
+                        in.gravaxis.trace.storage.MaintenanceOperation.COMPACT,
+                        new in.gravaxis.trace.storage.MaintenanceBudget(1, 2, 5000, () -> false),
+                        0);
+                if (result.state() == in.gravaxis.trace.storage.MaintenanceResult.State.PROGRESSED) progressed++;
+                else {
+                    assertThat(result.state()).isEqualTo(in.gravaxis.trace.storage.MaintenanceResult.State.COMPLETED);
+                    completed++;
+                }
+            }
+            assertThat(progressed).isPositive();
+            assertThat(completed).isEqualTo(2);
+        } else assertThat(store.compact()).isEqualTo(all.size());
         assertThat(store.stats().shardCount()).isEqualTo(1);
         assertThat(scanAll(oldest)).containsExactlyElementsOf(oracle(all, oldest));
         assertThat(scanAll(newest)).containsExactlyElementsOf(oracle(all, newest));

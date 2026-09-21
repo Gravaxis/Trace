@@ -24,12 +24,14 @@ class StorageCrashTest {
 
     @Test
     void killedRewriteRecoversBeforeAndAfterPublication() throws Exception {
-        for (String action : new String[] {"compact", "purge", "blob", "migration", "exhaustion"}) {
+        for (String action : new String[] {"compact", "purge", "blob", "migration", "exhaustion", "incremental"}) {
             String[] phases =
                     switch (action) {
                         case "blob" -> new String[] {"blob.payload", "blob.reference"};
                         case "migration" -> new String[] {"migration.copied", "migration.committed"};
                         case "exhaustion" -> new String[] {"exhaustion.rejected"};
+                        case "incremental" ->
+                            new String[] {"incremental.step", "incremental.output-forced", "incremental.committed"};
                         default -> new String[] {"rewrite.output-forced", "rewrite.committed"};
                     };
             for (String phase : phases) {

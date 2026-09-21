@@ -151,6 +151,8 @@ public final class RollbackResumeScenario implements Scenario {
                         Bukkit.getAsyncScheduler().runNow(context.plugin(), task -> {
                             try {
                                 if (phase.equals("storage-scheduled")) {
+                                    var ticks = new in.gravaxis.trace.harness.metrics.TickRecorder();
+                                    ticks.start(context.plugin());
                                     trace.call("sealForScheduledTest");
                                     // A second real captured batch creates another input shard.
                                     onEachRegion(context, world, areas, area -> {
@@ -181,10 +183,20 @@ public final class RollbackResumeScenario implements Scenario {
                                                                     "Inputs were not merged");
                                                         } catch (Exception e) {
                                                             result.failure("Scheduled maintenance failed: " + e);
+                                                        } finally {
+                                                            ticks.stop();
+                                                            ticks.report(result, "maintenance.window.tick");
+                                                            result.require(
+                                                                    ticks.sampleCount() > 0,
+                                                                    "No maintenance-window tick samples");
+                                                            result.detail(
+                                                                    "maintenance.tickScope",
+                                                                    "Whole synthetic capture/seal/scheduling window; mixed regions on Folia; no control or causal latency claim");
                                                         }
                                                         done.complete(null);
                                                     }))
                                             .exceptionally(error -> {
+                                                ticks.stop();
                                                 result.failure("Second batch failed: " + error);
                                                 done.complete(null);
                                                 return null;

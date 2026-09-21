@@ -16,8 +16,12 @@ public final class MaintenanceSchedule {
     private final MaintenancePolicy policy;
     private final BooleanSupplier cancelled;
     private long nextAt;
-    private boolean retentionTurn;
+    private int phase;
+    private volatile long progressed;
+    private volatile long quarantined;
+    private volatile long unverified;
     private volatile long completed;
+    private volatile long compactions;
     private volatile long deferred;
     private volatile long cancelledPasses;
     private volatile long noWork;
@@ -41,22 +45,34 @@ public final class MaintenanceSchedule {
         }
         var budget = new MaintenanceBudget(policy.maxInputRows(), policy.maxShards(), policy.budgetMillis(), cancelled);
         MaintenanceResult result;
+        MaintenanceOperation operation = MaintenanceOperation.values()[phase];
         long start = System.nanoTime();
         inProgress = true;
         try {
-            if (retentionTurn && policy.retentionMillis() > 0)
-                result = store.expireBefore(now - policy.retentionMillis(), budget);
-            else result = store.compact(budget);
+            if (operation == MaintenanceOperation.RETAIN && policy.retentionMillis() == 0)
+                result = new MaintenanceResult(MaintenanceResult.State.NO_WORK, 0);
+            else result = store.maintain(operation, budget, now - policy.retentionMillis());
+        } catch (StoreException e) {
+            // A bad compaction input must not starve the following verification phase.
+            phase = (phase + 1) % MaintenanceOperation.values().length;
+            throw e;
         } finally {
             lastElapsedNanos = System.nanoTime() - start;
             inProgress = false;
         }
-        retentionTurn = !retentionTurn;
+        if (result.state() == MaintenanceResult.State.PROGRESSED) nextAt = now;
+        else if (result.state() != MaintenanceResult.State.DEFERRED)
+            phase = (phase + 1) % MaintenanceOperation.values().length;
+        if (phase != 0 && result.state() != MaintenanceResult.State.DEFERRED) nextAt = now;
         switch (result.state()) {
             case COMPLETED -> {
                 rows += result.rows();
                 completed++;
+                if (operation == MaintenanceOperation.COMPACT) compactions++;
             }
+            case PROGRESSED -> progressed++;
+            case QUARANTINED -> quarantined++;
+            case UNVERIFIED -> unverified++;
             case DEFERRED -> deferred++;
             case CANCELLED -> cancelledPasses++;
             case NO_WORK -> noWork++;
@@ -65,11 +81,16 @@ public final class MaintenanceSchedule {
 
     public String status() {
         return "enabled=" + policy.enabled() + " completed=" + completed + " deferred=" + deferred + " cancelled="
-                + cancelledPasses + " noWork=" + noWork + " rows=" + rows;
+                + cancelledPasses + " noWork=" + noWork + " rows=" + rows + " progressed=" + progressed
+                + " quarantined=" + quarantined + " unverified=" + unverified + " compactions=" + compactions;
     }
 
     public long completed() {
         return completed;
+    }
+
+    public long compactions() {
+        return compactions;
     }
 
     public boolean inProgress() {

@@ -109,7 +109,6 @@ public final class StoreConsumer implements Runnable {
                 int drained = drainRings();
                 flushBuffer();
                 maybeForce();
-                maybeSeal();
                 maybeRecordDrops();
                 serveRequests();
                 maintenance.tick(System.currentTimeMillis(), pendingRecords() > 0 || !requests.isEmpty());
@@ -136,7 +135,7 @@ public final class StoreConsumer implements Runnable {
     }
 
     public long maintenanceCompleted() {
-        return maintenance.completed();
+        return maintenance.compactions();
     }
 
     public boolean maintenanceInProgress() {
@@ -312,14 +311,6 @@ public final class StoreConsumer implements Runnable {
         if (now - lastForceAt >= forceIntervalMillis) {
             journal.force();
             lastForceAt = now;
-        }
-    }
-
-    private void maybeSeal() throws StoreException {
-        long now = System.currentTimeMillis();
-        if (now - lastSealAt >= sealIntervalMillis) {
-            store.seal();
-            lastSealAt = now;
         }
     }
 

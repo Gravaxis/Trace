@@ -1,9 +1,9 @@
 config-version: 1
-# Non-destructive compaction runs on the storage consumer after draining capture.
+# Compaction, content verification, checkpointing and sealing run after capture drains.
 maintenance-enabled: true
-# Delay between attempts; busy capture defers the pass. Units: ms, s, m, h, d.
+# Delay between cycles; unfinished steps resume after draining. Units: ms, s, m, h, d.
 maintenance-interval: 60s
-# Admission limits, not performance promises. Oversized work is visibly deferred.
+# Row work per incremental step and retired files per sweep, not performance promises.
 maintenance-max-input-rows: 100000
 maintenance-max-shards: 8
 # Cooperative deadline. OS disk stalls cannot be interrupted by this budget.
