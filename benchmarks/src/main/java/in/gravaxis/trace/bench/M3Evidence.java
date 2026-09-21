@@ -19,7 +19,11 @@ public final class M3Evidence {
 
     public static void main(String[] args) throws Exception {
         Path root = Path.of(args[0]);
-        Path output = MeasurementRun.create(root.resolve("benchmarks/results/m3-validation"), ":benchmarks:m3Evidence");
+        boolean maintenanceOnly = args.length == 2 && args[1].equals("maintenance");
+        if (args.length > 1 && !maintenanceOnly) throw new IllegalArgumentException("Unknown evidence scope");
+        Path output = MeasurementRun.create(
+                root.resolve("benchmarks/results/m3-validation"),
+                maintenanceOnly ? ":benchmarks:m3MaintenanceEvidence" : ":benchmarks:m3Evidence");
         Files.writeString(output.resolve("complete.json"), "{\"complete\":false}\n");
         Files.copy(root.resolve("gradle/servers.properties"), output.resolve("servers.properties"));
         var factory = DocumentBuilderFactory.newInstance();
@@ -45,14 +49,16 @@ public final class M3Evidence {
             }
         }
         for (String platform : List.of("Paper", "Folia")) {
-            for (String scenario : List.of("integration", "resume", "purge", "quarantine", "scheduled")) {
+            for (String scenario : maintenanceOnly
+                    ? List.of("purge", "quarantine", "scheduled")
+                    : List.of("integration", "resume", "purge", "quarantine", "scheduled")) {
                 Path file = root.resolve(
                         "trace-test-harness/build/test-servers/" + scenario + platform + "/harness-result.json");
                 if (!Files.readString(file).contains("\"status\": \"PASS\""))
                     throw new IllegalStateException("Scenario did not pass");
                 Files.copy(file, output.resolve(scenario + platform + ".json"));
             }
-            for (String crash : List.of("crashRollback", "crashJournal")) {
+            for (String crash : maintenanceOnly ? List.<String>of() : List.of("crashRollback", "crashJournal")) {
                 Path file = root.resolve("trace-test-harness/build/crash-results/" + crash + platform + ".json");
                 if (!Files.readString(file).contains("\"failures\": 0"))
                     throw new IllegalStateException("Crash rig did not pass");
@@ -72,7 +78,9 @@ public final class M3Evidence {
         }
         Files.writeString(
                 output.resolve("complete.json"),
-                "{\"complete\":true,\"limits\":\"Synthetic harness. Tests assert their own exercised branches. Not power-loss or production workload proof.\"}\n");
+                "{\"complete\":true,\"scope\":\""
+                        + (maintenanceOnly ? "unit and serial maintenance scenarios" : "full M3 regression")
+                        + "\",\"limits\":\"Synthetic harness. Tests assert their own exercised branches. Not power-loss or production workload proof.\"}\n");
         System.out.println("Generated M3 evidence: " + output);
     }
 }

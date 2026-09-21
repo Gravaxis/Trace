@@ -52,3 +52,9 @@ success, and copies only named result artifacts into a generated commit-labelled
 directory under results/m3-validation. It never copies server logs, worlds,
 databases, player caches or source data. These results leave the README's existing
 server benchmark table unchanged.
+
+For a scoped maintenance correction after a full regression, use
+`:benchmarks:m3MaintenanceEvidence`. Its generated complete.json explicitly names
+the narrower scope: unit gates and serial purge, quarantine and scheduling on both
+platforms. It does not copy earlier integration or server-crash results under the
+new commit; cite the separate full-regression report for those gates.

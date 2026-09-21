@@ -186,3 +186,15 @@ tasks.register<JavaExec>("m3Evidence") {
   args(rootProject.layout.projectDirectory.asFile.absolutePath)
   outputs.upToDateWhen { false }
 }
+
+tasks.register<JavaExec>("m3MaintenanceEvidence") {
+  group = "verification"
+  description = "Records unit and serial maintenance-only evidence after a scoped storage change."
+  dependsOn(":trace-paper:test", ":trace-storage-sqlite:test", ":trace-core:test",
+    ":trace-test-harness:storageMaintenanceTest", ":trace-test-harness:scheduledMaintenanceTest")
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("in.gravaxis.trace.bench.M3Evidence")
+  workingDir(rootProject.layout.projectDirectory)
+  args(rootProject.layout.projectDirectory.asFile.absolutePath, "maintenance")
+  outputs.upToDateWhen { false }
+}
