@@ -288,7 +288,9 @@ public abstract class EventStoreContract {
                         batch.sequence(i),
                         batch.beforeState(i),
                         batch.afterState(i),
-                        batch.actorId(i)));
+                        batch.actorId(i),
+                        batch.cause(i),
+                        batch.kind(i)));
             }
             mark = cursor.position();
         }
@@ -368,6 +370,123 @@ public abstract class EventStoreContract {
 
     // --- helpers ---------------------------------------------------------------------------------
 
+    @Test
+    void compactionPreservesEveryFieldAndStoredSuffixInBothDirections() throws Exception {
+        List<Events> all = new ArrayList<>();
+        for (int shard = 0; shard < 3; shard++) {
+            List<Events> part = new ArrayList<>();
+            for (int i = 0; i < 5; i++)
+                part.add(new Events(
+                        WORLD,
+                        i * 17 - 40,
+                        65 + i,
+                        -i,
+                        T0 + shard * 100 + i,
+                        i,
+                        10 + i,
+                        20 + shard,
+                        7 + i,
+                        i % 2 == 0 ? Cause.PLACING : Cause.BREAKING));
+            append(part, shard);
+            assertThat(store.seal()).isEqualTo(part.size());
+            all.addAll(part);
+        }
+        var oldest = planFor(all, ScanPlan.Order.OLDEST_FIRST);
+        var newest = planFor(all, ScanPlan.Order.NEWEST_FIRST);
+        CursorPosition oldestMark;
+        CursorPosition newestMark;
+        try (var cursor = store.scan(oldest)) {
+            assertThat(cursor.next(new MutationBatch(2))).isTrue();
+            oldestMark = cursor.position();
+        }
+        try (var cursor = store.scan(newest)) {
+            assertThat(cursor.next(new MutationBatch(2))).isTrue();
+            newestMark = cursor.position();
+        }
+        assertThat(store.compact()).isEqualTo(all.size());
+        assertThat(store.stats().shardCount()).isEqualTo(1);
+        assertThat(scanAll(oldest)).containsExactlyElementsOf(oracle(all, oldest));
+        assertThat(scanAll(newest)).containsExactlyElementsOf(oracle(all, newest));
+        assertThat(scanAll(oldest.resumeAfter(oldestMark)))
+                .containsExactlyElementsOf(oracle(all, oldest).subList(2, all.size()));
+        assertThat(scanAll(newest.resumeAfter(newestMark)))
+                .containsExactlyElementsOf(oracle(all, newest).subList(2, all.size()));
+        assertThat(store.verify().quarantined()).isZero();
+    }
+
+    @Test
+    void purgeCoversHotAndSealedRowsAndReplayCannotResurrectThem() throws Exception {
+        List<Events> selected = line(2, T0);
+        List<Events> retained = line(2, T0 + 100);
+        append(selected.subList(0, 1), 0);
+        store.seal();
+        append(selected.subList(1, 2), 1);
+        append(retained, 2);
+        assertThat(store.purgeActor(7, T0, T0 + 2)).isEqualTo(2);
+        assertThat(store.stats().hotRows() + store.stats().sealedRows()).isEqualTo(retained.size());
+        assertThat(store.gapsBetween(T0, T0 + 1)).anySatisfy(g -> {
+            assertThat(g.reason()).isEqualTo(GapRecord.Reason.PURGED);
+            assertThat(g.droppedCount()).isEqualTo(2);
+        });
+        assertThatThrownBy(() -> store.scan(planFor(selected))).isInstanceOf(StoreException.class);
+        store.close();
+        store = open(directory);
+        append(selected, 3);
+        assertThat(store.appliedLsn()).isEqualTo(3);
+        assertThat(store.stats().hotRows() + store.stats().sealedRows()).isEqualTo(retained.size());
+        assertThat(scanAll(planFor(retained))).containsExactlyElementsOf(oracle(retained, planFor(retained)));
+    }
+
+    @Test
+    void retentionIsStrictlyBeforeCutoffAndDefersWithAnOpenReader() throws Exception {
+        List<Events> all = line(4, T0);
+        append(all, 0);
+        store.seal();
+        try (var reader = store.scan(planFor(all))) {
+            assertThat(reader.next(new MutationBatch(1))).isTrue();
+            assertThatThrownBy(() -> store.expireBefore(T0 + 2)).isInstanceOf(StoreException.class);
+            assertThat(store.stats().sealedRows()).isEqualTo(4);
+            assertThat(store.gapsBetween(T0, T0 + 4)).isEmpty();
+        }
+        assertThat(store.expireBefore(T0 + 2)).isEqualTo(2);
+        List<Events> remaining = all.subList(2, 4);
+        assertThat(scanAll(planFor(remaining))).containsExactlyElementsOf(oracle(remaining, planFor(remaining)));
+        assertThatThrownBy(() -> store.scan(planFor(all))).isInstanceOf(StoreException.class);
+    }
+
+    @Test
+    void blobReferencesSurviveReopenAndMergeThenOnlyUnreferencedPayloadsCollect() throws Exception {
+        List<Events> all = line(2, T0);
+        for (int i = 0; i < all.size(); i++) {
+            append(all.subList(i, i + 1), i);
+            store.seal();
+        }
+        var first = new CursorPosition(in.gravaxis.trace.core.geom.Morton.key(0, 0), T0, 0);
+        var second = new CursorPosition(in.gravaxis.trace.core.geom.Morton.key(0, 0), T0 + 1, 1);
+        byte[] value = {0, -1, 3};
+        String id = store.putBlob(1, value);
+        assertThat(store.putBlob(1, value)).isEqualTo(id);
+        String orphan = store.putBlob(2, value);
+        assertThat(orphan).isNotEqualTo(id);
+        store.attachBlob(WORLD, first, id);
+        store.attachBlob(WORLD, second, id);
+        assertThat(store.compact()).isEqualTo(2);
+        store.close();
+        store = open(directory);
+        assertThat(store.readBlob(id)).containsExactly(value);
+        assertThat(store.blobAt(WORLD, first)).isEqualTo(id);
+        assertThat(store.blobAt(WORLD, second)).isEqualTo(id);
+        assertThat(store.collectBlobs()).isEqualTo(1);
+        assertThatThrownBy(() -> store.readBlob(orphan)).isInstanceOf(StoreException.class);
+        assertThat(store.purgeActor(7, T0, T0 + 1)).isEqualTo(1);
+        assertThat(store.blobAt(WORLD, first)).isNull();
+        assertThat(store.collectBlobs()).isZero();
+        assertThat(store.readBlob(id)).containsExactly(value);
+        assertThat(store.purgeActor(7, T0 + 1, T0 + 2)).isEqualTo(1);
+        assertThat(store.collectBlobs()).isEqualTo(1);
+        assertThatThrownBy(() -> store.readBlob(id)).isInstanceOf(StoreException.class);
+    }
+
     private void append(List<Events> events, long lsn) throws StoreException {
         append(store, events, lsn);
     }
@@ -398,7 +517,9 @@ public abstract class EventStoreContract {
                             batch.sequence(i),
                             batch.beforeState(i),
                             batch.afterState(i),
-                            batch.actorId(i)));
+                            batch.actorId(i),
+                            batch.cause(i),
+                            batch.kind(i)));
                 }
             }
         }
@@ -426,7 +547,16 @@ public abstract class EventStoreContract {
                 .filter(e -> plan.acceptsActor(e.actorId()))
                 .sorted(byKey)
                 .map(e -> new Row(
-                        e.x(), e.y(), e.z(), e.timestamp(), e.sequence(), e.beforeState(), e.afterState(), e.actorId()))
+                        e.x(),
+                        e.y(),
+                        e.z(),
+                        e.timestamp(),
+                        e.sequence(),
+                        e.beforeState(),
+                        e.afterState(),
+                        e.actorId(),
+                        e.cause().id(),
+                        in.gravaxis.trace.core.record.RecordKind.BLOCK.id()))
                 .toList();
     }
 
@@ -479,5 +609,14 @@ public abstract class EventStoreContract {
 
     /** One row as a test sees it. */
     private record Row(
-            int x, int y, int z, long timestamp, int sequence, int beforeState, int afterState, int actorId) {}
+            int x,
+            int y,
+            int z,
+            long timestamp,
+            int sequence,
+            int beforeState,
+            int afterState,
+            int actorId,
+            int cause,
+            int kind) {}
 }
