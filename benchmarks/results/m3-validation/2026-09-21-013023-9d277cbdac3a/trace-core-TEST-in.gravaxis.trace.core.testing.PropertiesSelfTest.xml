@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.core.testing.PropertiesSelfTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-21T00:12:36.882Z" hostname="ISHWARS-PC" time="0.018">
+  <properties/>
+  <testcase name="the same seed produces the same cases" classname="in.gravaxis.trace.core.testing.PropertiesSelfTest" time="0.003"/>
+  <testcase name="a failing property is reported with a shrunk, replayable case" classname="in.gravaxis.trace.core.testing.PropertiesSelfTest" time="0.013"/>
+  <testcase name="a property that always holds passes without drama" classname="in.gravaxis.trace.core.testing.PropertiesSelfTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

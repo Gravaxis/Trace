@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.config.MaintenanceConfigTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-21T01:19:09.606Z" hostname="ISHWARS-PC" time="0.369">
+  <properties/>
+  <testcase name="rendersTemplatePreservesValuesAndForeignKeysAndBacksUpOldVersion()" classname="in.gravaxis.trace.config.MaintenanceConfigTest" time="0.276"/>
+  <testcase name="refusesAllInvalidValuesAndFutureVersionsWithoutChangingFile()" classname="in.gravaxis.trace.config.MaintenanceConfigTest" time="0.025"/>
+  <testcase name="preservesForeignNullValues()" classname="in.gravaxis.trace.config.MaintenanceConfigTest" time="0.036"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

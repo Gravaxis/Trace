@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.storage.sqlite.ShardMaintenanceTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-09-21T01:19:14.263Z" hostname="ISHWARS-PC" time="0.635">
+  <properties/>
+  <testcase name="generatedMultisetAndBothDirectionsSurviveCompaction()" classname="in.gravaxis.trace.storage.sqlite.ShardMaintenanceTest" time="0.283"/>
+  <testcase name="quarantineRollsBackStateWhenGapInsertionFails()" classname="in.gravaxis.trace.storage.sqlite.ShardMaintenanceTest" time="0.038"/>
+  <testcase name="mergePreservesRowsAndPinnedCursorAndStoredResume()" classname="in.gravaxis.trace.storage.sqlite.ShardMaintenanceTest" time="0.069"/>
+  <testcase name="pagedHotSnapshotSurvivesSealWithoutMissingOrDuplicatingRows()" classname="in.gravaxis.trace.storage.sqlite.ShardMaintenanceTest" time="0.029"/>
+  <testcase name="purgeFiltersHotAndSealedAndCannotBeReplayed()" classname="in.gravaxis.trace.storage.sqlite.ShardMaintenanceTest" time="0.057"/>
+  <testcase name="healthyAndMissingBranchesAreDistinct()" classname="in.gravaxis.trace.storage.sqlite.ShardMaintenanceTest" time="0.031"/>
+  <testcase name="changedPayloadQuarantinesEvenWhenSqliteStructureIsHealthy()" classname="in.gravaxis.trace.storage.sqlite.ShardMaintenanceTest" time="0.037"/>
+  <testcase name="duplicateIdentityCannotDisappearDuringMerge()" classname="in.gravaxis.trace.storage.sqlite.ShardMaintenanceTest" time="0.039"/>
+  <testcase name="retentionKeepsCutoffAndDefersWhileReaderIsOpen()" classname="in.gravaxis.trace.storage.sqlite.ShardMaintenanceTest" time="0.046"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

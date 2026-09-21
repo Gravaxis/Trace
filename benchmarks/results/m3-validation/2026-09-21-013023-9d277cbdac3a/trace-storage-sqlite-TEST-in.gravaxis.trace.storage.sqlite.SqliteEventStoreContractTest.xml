@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" tests="20" skipped="0" failures="0" errors="0" timestamp="2026-09-21T01:19:14.900Z" hostname="ISHWARS-PC" time="1.486">
+  <properties/>
+  <testcase name="a checkpoint with no cursor records progress without promising more was finished" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.024"/>
+  <testcase name="purgeCoversHotAndSealedRowsAndReplayCannotResurrectThem()" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.044"/>
+  <testcase name="a scan visits every matching row exactly once, at any page size" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.662"/>
+  <testcase name="resuming a scan returns exactly the rows that were left" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.034"/>
+  <testcase name="rows outside the box are filtered even when the key cover is coarse" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.019"/>
+  <testcase name="rows written are readable after sealing, and the hot window is emptied" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.027"/>
+  <testcase name="compactionPreservesEveryFieldAndStoredSuffixInBothDirections()" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.325"/>
+  <testcase name="rows written are readable before anything is sealed" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.019"/>
+  <testcase name="a rollback that was interrupted is still there after a restart, with its cursor" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.028"/>
+  <testcase name="a cursor reports a position that matches the last row it returned" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.019"/>
+  <testcase name="retentionIsStrictlyBeforeCutoffAndDefersWithAnOpenReader()" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.036"/>
+  <testcase name="a second server opening the same data directory is refused, by name" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.02"/>
+  <testcase name="replaying an already-applied batch changes nothing" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.021"/>
+  <testcase name="blobReferencesSurviveReopenAndMergeThenOnlyUnreferencedPayloadsCollect()" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.056"/>
+  <testcase name="the scan order is exactly the one the plan asked for" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.022"/>
+  <testcase name="the batch at journal position zero is kept" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.022"/>
+  <testcase name="gaps are recorded and found by the window they overlap" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.016"/>
+  <testcase name="rows in the hot window and rows in shards come back as one ordered stream" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.026"/>
+  <testcase name="sealing twice is not an error and does not duplicate rows" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.023"/>
+  <testcase name="rows survive closing and reopening the store" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.032"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

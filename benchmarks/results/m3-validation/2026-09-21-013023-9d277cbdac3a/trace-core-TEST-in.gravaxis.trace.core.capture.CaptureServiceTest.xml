@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.core.capture.CaptureServiceTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-09-21T00:12:35.591Z" hostname="ISHWARS-PC" time="0.357">
+  <properties/>
+  <testcase name="an event that changed nothing is not recorded" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.129"/>
+  <testcase name="excessThreadsNeverShareAnSpscRingAndLossBoundsSurviveReopen()" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.075"/>
+  <testcase name="a position the record cannot address is counted and never reaches the encoder" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.011"/>
+  <testcase name="an event that changed the world is recorded, with the state the world really took" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.014"/>
+  <testcase name="staging more than a tick can hold publishes the rest unconfirmed rather than losing it" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.015"/>
+  <testcase name="a burst the slot clock cannot order is dropped, and counted as that and not as a full ring" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.081"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

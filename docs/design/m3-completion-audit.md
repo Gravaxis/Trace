@@ -16,9 +16,13 @@ not started.
 | Shared backend maintenance contract | EventStoreContract compares all returned event fields including cause/kind, both scan directions and stored suffixes; purge replay exclusion, cutoff/read-lease behavior and blob lifetime | Passed by SQLite. Other backends must run it. Corruption/quarantine atomicity remains SQLite-specific |
 | Cancellation and retired-file cleanup | New tests first failed on orphan accumulation and no-work cleanup starvation; then passed after the fix | Cancelled unpublished output is removed; sweeps are bounded and progress past completed unlink records; killed-process orphan cleanup still occurs at startup |
 | Reproducible maintenance costs | :benchmarks:maintenanceCosts generates environment and raw sample reports from committed source | Measured synthetic workload only; not a production latency, capacity, native-memory or hard-deadline guarantee |
-| Full regression | :benchmarks:m3Evidence runs unit gates plus serial integration, cancellation resume, journal crash, real-crash resume, purge/quarantine and scheduled maintenance | Initial full run passed; corrected-revision final collection is recorded separately when complete |
+| Full regression | :benchmarks:m3Evidence runs unit gates plus serial integration, cancellation resume, journal crash, real-crash resume, purge/quarantine and scheduled maintenance | Passed on the corrected revision; generated evidence is linked below. A no-loss journal-kill iteration remains explicitly inconclusive |
 
 Build, module graph, formatting and README-table consistency are checked separately.
+The corrected-revision collection is
+[the generated regression evidence](../../benchmarks/results/m3-validation/2026-09-21-013023-9d277cbdac3a/complete.json),
+with clean source revision recorded in its environment.json. Build, module graph,
+formatting and README-table consistency passed as well.
 The report collector's environment describes the collector JVM; server heap/JVM
 details are inside the individual harness results. It is not a server measurement.
 

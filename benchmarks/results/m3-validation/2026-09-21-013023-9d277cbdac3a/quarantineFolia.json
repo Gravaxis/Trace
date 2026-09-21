@@ -1,0 +1,20 @@
+{
+  "scenario": "storage-quarantine",
+  "status": "PASS",
+  "params": {},
+  "details": {
+    "server.brand": "Folia",
+    "server.minecraftVersion": "26.2",
+    "server.version": "26.2-7-14b7fee (MC: 26.2)",
+    "server.regionised": "true",
+    "java.version": "25.0.4+7-LTS-189",
+    "heap.maxBytes": "1073741824",
+    "areas": "6",
+    "blocks": "240",
+    "maintenance.result": "verified=1 changed=240 gaps=1",
+    "maintenance.rollback": "refused: Events were lost between 1789954193701 and 1789954193714 (QUARANTINE). Rolling back across a gap would produce a world that never existed, so Trace will not do it.",
+    "maintenance.worldUnchanged": "true"
+  },
+  "metrics": [],
+  "failures": []
+}

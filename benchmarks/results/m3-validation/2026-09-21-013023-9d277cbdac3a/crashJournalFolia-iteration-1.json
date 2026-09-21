@@ -1,0 +1,23 @@
+{
+  "scenario": "crash-journal-verify",
+  "status": "PASS",
+  "params": {},
+  "details": {
+    "server.brand": "Folia",
+    "server.minecraftVersion": "26.2",
+    "server.version": "26.2-7-14b7fee (MC: 26.2)",
+    "server.regionised": "true",
+    "java.version": "25.0.4+7-LTS-189",
+    "heap.maxBytes": "1073741824",
+    "crash.truthEvents": "71883",
+    "crash.storedPositions": "70800",
+    "crash.missing": "1083",
+    "crash.gaps": "1789953734995-1789953736031:CRASH_WINDOW",
+    "crash.lossy": "true"
+  },
+  "metrics": [
+    {"name": "crash.truthEvents", "value": 71883, "unit": "count"},
+    {"name": "crash.missing", "value": 1083, "unit": "count"}
+  ],
+  "failures": []
+}
