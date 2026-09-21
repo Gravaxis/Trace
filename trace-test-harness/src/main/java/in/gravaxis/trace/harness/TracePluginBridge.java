@@ -58,6 +58,7 @@ public final class TracePluginBridge {
             put(optional, plugin, "maintenanceForTest", String.class);
             put(optional, plugin, "scheduledMaintenanceForTest");
             put(optional, plugin, "sealForScheduledTest");
+            put(optional, plugin, "clientCaptureRows", String.class, int.class, int.class, int.class);
             put(optional, plugin, "gapsBetween", long.class, long.class);
             put(
                     optional,

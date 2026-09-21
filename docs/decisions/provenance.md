@@ -230,3 +230,34 @@ These are signature checks, not proof of ownership, allocation, event ordering,
 NBT fidelity or natural server behavior. Internal NBT/state handles and protocol
 client packet contracts remain unverified; no new dependency was selected.
 No forbidden project source or private database was read.
+
+## 2026-09-21 — real loopback client gate
+
+Inspected the already downloaded pinned Paper and Folia implementation jars with
+javap: ProtocolInfo.DetailsProvider/Details/PacketVisitor, handshake/login/configuration
+protocol templates, packet constructors and STREAM_CODEC fields for login,
+configuration finish/known packs/code-of-conduct, keepalive/ping, teleport ack,
+player-loaded/client-tick-end, player actions, use-item-on and chunk-batch receipt.
+Inspected the Paper packet type tables and player-action/use-item-on bytecode;
+packet ids come from each runtime's own table, not copied constants. No new
+dependency or NMS compile dependency was added. The client uses these codecs over
+a real loopback Socket from the harness process, not a server connection shortcut.
+This deliberately does not independently validate the server's wire encoding.
+
+Both API jars were checked for teleportAsync, ownership overloads, inventory access,
+setGameMode, setItemInMainHand, Bukkit.getPort and the event APIs. The initial Paper
+gate failed because its fixture assumed an air break emitted no event: the pinned
+server emits a natural creative-mode break event and Trace rejects it at tick end.
+The corrected gate asserts that branch after the individual action, separately
+from cancellation and same-tick reversion. Successful generated evidence is the
+authority for reported results, not this development observation.
+
+## 2026-09-21 — owner-supplied Spyglass suggestion
+
+Read only the rendered README at https://github.com/medievalrp-net/Spyglass after
+the owner supplied a screenshot recommending bounded queues. No implementation,
+build file or schema was opened. The README did not establish the suggested
+bounded-queue overflow policy; its performance statements were not adopted or
+compared. The owner chose to finish the client gate, then bound M4 payload queues.
+Trace's queue design follows its own nonblocking-producer and explicit-loss
+requirements, not an inferred contract from the screenshot.

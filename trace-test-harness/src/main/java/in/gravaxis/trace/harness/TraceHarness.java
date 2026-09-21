@@ -11,6 +11,7 @@ package in.gravaxis.trace.harness;
 import in.gravaxis.trace.harness.scenarios.BlockBreakRollbackScenario;
 import in.gravaxis.trace.harness.scenarios.BlockChurnScenario;
 import in.gravaxis.trace.harness.scenarios.BootScenario;
+import in.gravaxis.trace.harness.scenarios.ClientCaptureScenario;
 import in.gravaxis.trace.harness.scenarios.CrashJournalVerifyScenario;
 import in.gravaxis.trace.harness.scenarios.CrashJournalWriteScenario;
 import in.gravaxis.trace.harness.scenarios.CrashVerifyScenario;
@@ -55,6 +56,7 @@ public final class TraceHarness extends JavaPlugin {
 
     private static final Map<String, Scenario> SCENARIOS = Map.ofEntries(
             Map.entry("boot", new BootScenario()),
+            Map.entry("client-capture", new ClientCaptureScenario()),
             Map.entry("block-churn", new BlockChurnScenario()),
             Map.entry("block-break-rollback", new BlockBreakRollbackScenario()),
             Map.entry("crash-write", new CrashWriteScenario()),

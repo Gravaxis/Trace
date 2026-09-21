@@ -9,7 +9,7 @@ and an unmet item is reported as unmet rather than carried quietly.
 | M1 | Benchmark and crash harness — built *before* any feature | **done** |
 | M2 | Walking skeleton: one event type captured with zero allocation, journalled, sealed into a shard, queried back, rolled back | **done** |
 | M3 | Storage engine: sharding, sealing, compaction, manifest, dictionaries, blobs, retention, purge, verify, quarantine | **done** |
-| M4 | Full capture: every kind and cause, block entities, entities, containers, sessions | planned |
+| M4 | Full capture: every kind and cause, block entities, entities, containers, sessions | in progress |
 | M5 | Mass edits: WorldEdit and FAWE hooks, section-diff patches, densification | planned |
 | M6 | Rollback engine complete: streaming, chunk batching, adaptive budget, preview, resume, undo, relight | planned |
 | M7 | Product surface: the `/trace` command tree, inspector output, localisation | planned |
@@ -248,6 +248,11 @@ explicit; unfinished maintenance restarts safely after process death. Earlier
 the final audit resolves them. M3 is **done**; M4 has not started.
 
 ## Open questions carried forward
+
+M4 implementation begins with the [real-client gate](docs/design/m4-client-gate.md),
+following the [file-level plan and self-review](docs/design/m4-capture-plan.md).
+Historical M2 notes above retain their original scope. Generated client evidence
+will identify the exact revised proof boundary; full capture remains incomplete.
 
 Tracked in the ADRs rather than here, but the ones that shape upcoming work:
 

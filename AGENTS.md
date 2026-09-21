@@ -5,7 +5,7 @@ what is already true, and what will fail if you ignore them. It is written for a
 but a human contributor gains from it too.
 
 Trace is a block, container and entity logging plugin with rollback, for Paper and Folia servers.
-Nothing is released. Milestones M0 to M3 are complete; M4 has not started.
+Nothing is released. Milestones M0 to M3 are complete; M4 is in progress.
 
 Four documents carry the rest: [ROADMAP.md](ROADMAP.md) for what is built and, under each item,
 what is **not** established; [docs/decisions/](docs/decisions) for the ADRs that bind future

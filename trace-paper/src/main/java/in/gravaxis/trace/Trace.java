@@ -38,6 +38,56 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Trace extends JavaPlugin implements TraceApi {
 
+    /** Blocking, bounded fixture scan; called only from the client harness's async task. */
+    @ApiStatus.Internal
+    public String clientCaptureRows(String worldName, int x, int y, int z) throws Exception {
+        if (!System.getProperty("trace.harness.scenario", "").equals("client-capture"))
+            throw new IllegalStateException("Only available in client capture harness");
+        TraceRuntime current = runtime;
+        World world = Bukkit.getWorld(worldName);
+        if (current == null || world == null) throw new IllegalStateException("Runtime or world absent");
+        current.consumer().flushAndSeal(30_000);
+        ScanPlan plan = ScanPlan.of(
+                current.worlds().idOf(world),
+                new BlockBox(x, y, z, x + 5, y, z),
+                0,
+                System.currentTimeMillis() + 1000,
+                ScanPlan.Order.OLDEST_FIRST);
+        MutationBatch batch = new MutationBatch(plan.batchSize());
+        StringBuilder out = new StringBuilder();
+        int seen = 0;
+        try (MutationCursor cursor = current.store().scan(plan)) {
+            while (cursor.next(batch)) {
+                for (int i = 0; i < batch.size(); i++) {
+                    if (++seen > 16) throw new IllegalStateException("Client fixture unexpectedly large");
+                    if (!out.isEmpty()) out.append(';');
+                    out.append(batch.x(i))
+                            .append(':')
+                            .append(batch.y(i))
+                            .append(':')
+                            .append(batch.z(i))
+                            .append(':')
+                            .append(current.states().materialOf(batch.beforeState(i)))
+                            .append(':')
+                            .append(current.states().materialOf(batch.afterState(i)))
+                            .append(':')
+                            .append(current.actors().playerOf(batch.actorId(i)))
+                            .append(':')
+                            .append(batch.cause(i))
+                            .append(':')
+                            .append(batch.kind(i))
+                            .append(':')
+                            .append(batch.timestamp(i))
+                            .append(':')
+                            .append(batch.sequence(i))
+                            .append(':')
+                            .append(batch.chunkKey(i));
+                }
+            }
+        }
+        return out.toString();
+    }
+
     /** Blocking harness seam, called asynchronously; only the consumer runs scheduled maintenance. */
     @ApiStatus.Internal
     public String scheduledMaintenanceForTest() throws Exception {

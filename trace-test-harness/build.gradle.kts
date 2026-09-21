@@ -15,6 +15,7 @@ description =
 dependencies {
   // Trace itself is on the server; the harness only talks to its published API.
   compileOnly(project(":trace-api"))
+  testRuntimeOnly(libs.paper.api)
 }
 
 paperPluginYaml {
@@ -99,6 +100,15 @@ fun registerScenario(
 
 val smokePaper = registerScenario("smokePaper", "paper", "boot", 25591)
 val smokeFolia = registerScenario("smokeFolia", "folia", "boot", 25592)
+
+val clientPaper = registerScenario("clientPaper", "paper", "client-capture", 25608)
+val clientFolia = registerScenario("clientFolia", "folia", "client-capture", 25609)
+listOf(clientPaper, clientFolia).forEach { task -> task.configure { outputs.upToDateWhen { false } } }
+tasks.register("clientCaptureTest") {
+  group = "verification"
+  description = "Runs actual loopback protocol capture on pinned Paper and Folia, serially."
+  dependsOn(clientPaper, clientFolia)
+}
 
 // The M2 definition of done: capture, store, roll back, on both platforms.
 val integrationPaper = registerScenario("integrationPaper", "paper", "block-break-rollback", 25596)

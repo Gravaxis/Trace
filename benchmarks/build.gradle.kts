@@ -188,6 +188,17 @@ tasks.register<JavaExec>("m3Evidence") {
   outputs.upToDateWhen { false }
 }
 
+tasks.register<JavaExec>("clientCaptureEvidence") {
+  group = "verification"
+  description = "Runs serial real-client gates and records their revision and scope."
+  dependsOn(":trace-test-harness:clientCaptureTest", ":trace-test-harness:test")
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("in.gravaxis.trace.bench.ClientEvidence")
+  workingDir(rootProject.layout.projectDirectory)
+  args(rootProject.layout.projectDirectory.asFile.absolutePath)
+  outputs.upToDateWhen { false }
+}
+
 tasks.register<JavaExec>("m3MaintenanceEvidence") {
   group = "verification"
   description = "Records unit and serial maintenance-only evidence after a scoped storage change."
