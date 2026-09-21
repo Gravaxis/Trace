@@ -22,6 +22,46 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class IncrementalMaintenanceTest {
+    @Test
+    void scheduleActuallyQuarantinesRetriesCheckpointAndSeals() throws Exception {
+        try (var store = SqliteEventStore.open(directory)) {
+            store.append(Events.batchOf(List.of(ShardMaintenanceTest.event(1, ShardMaintenanceTest.T, 16))), 0);
+            store.seal();
+            try (var c = DriverManager.getConnection(
+                            "jdbc:sqlite:" + directory.resolve("shards/shard-000000000001.db"));
+                    var s = c.createStatement()) {
+                s.executeUpdate("UPDATE ev SET b=999");
+            }
+            store.append(Events.batchOf(List.of(ShardMaintenanceTest.event(2, ShardMaintenanceTest.T + 10, 16))), 1);
+            var schedule = new in.gravaxis.trace.storage.MaintenanceSchedule(
+                    store, new in.gravaxis.trace.storage.MaintenancePolicy(true, 1, 1, 2, 5000, 0), () -> false, 0);
+            schedule.tick(1, false); // No pair to compact.
+            schedule.tick(2, false); // The first verification page must yield.
+            assertThat(store.stats().shardCount()).isEqualTo(1);
+            schedule.tick(3, false);
+            assertThat(schedule.status()).contains("quarantined=1");
+            assertThat(store.stats().shardCount()).isZero();
+            schedule.tick(4, false); // Retention disabled.
+            try (var c = DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("manifest.db"));
+                    var s = c.createStatement()) {
+                c.setAutoCommit(false);
+                try (var rows = s.executeQuery("SELECT count(*) FROM shard")) {
+                    assertThat(rows.next()).isTrue();
+                }
+                store.recordGap(new GapRecord(1, 2, GapRecord.Reason.CRASH_WINDOW, 0, "checkpoint scheduling fixture"));
+                schedule.tick(5, false);
+                assertThat(schedule.deferred()).isEqualTo(1);
+                assertThat(Files.size(directory.resolve("manifest.db-wal"))).isPositive();
+            }
+            schedule.tick(6, false);
+            assertThat(Files.size(directory.resolve("manifest.db-wal"))).isZero();
+            for (int i = 7; i <= 10; i++) schedule.tick(i, false);
+            assertThat(store.stats().hotRows()).isZero();
+            assertThat(store.stats().sealedRows()).isEqualTo(1);
+            assertThat(store.verify().verified()).isEqualTo(1);
+        }
+    }
+
     @TempDir
     Path directory;
 
