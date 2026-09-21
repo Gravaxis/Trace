@@ -1,0 +1,1 @@
+{"complete":true,"scope":"unit and serial maintenance scenarios","limits":"Synthetic harness. Tests assert their own exercised branches. Not power-loss or production workload proof."}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.storage.sqlite.StorageCrashTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-21T08:03:44.703Z" hostname="ISHWARS-PC" time="10.255">
+  <properties/>
+  <testcase name="killedRewriteRecoversBeforeAndAfterPublication()" classname="in.gravaxis.trace.storage.sqlite.StorageCrashTest" time="10.254"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

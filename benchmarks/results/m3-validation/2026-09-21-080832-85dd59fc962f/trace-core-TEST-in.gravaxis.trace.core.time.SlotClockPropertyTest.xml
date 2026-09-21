@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.core.time.SlotClockPropertyTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-21T00:12:36.900Z" hostname="ISHWARS-PC" time="0.442">
+  <properties/>
+  <testcase name="a slot never issues the same stamp twice, whatever the wall clock does" classname="in.gravaxis.trace.core.time.SlotClockPropertyTest" time="0.353"/>
+  <testcase name="two slots in the same millisecond never collide" classname="in.gravaxis.trace.core.time.SlotClockPropertyTest" time="0.001"/>
+  <testcase name="the logical clock never drifts further ahead than it is allowed to" classname="in.gravaxis.trace.core.time.SlotClockPropertyTest" time="0.084"/>
+  <testcase name="a seeded clock never reissues a stamp from before a restart or a slot handover" classname="in.gravaxis.trace.core.time.SlotClockPropertyTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

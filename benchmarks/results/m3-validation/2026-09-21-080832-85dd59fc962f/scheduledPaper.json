@@ -1,0 +1,24 @@
+{
+  "scenario": "storage-scheduled",
+  "status": "PASS",
+  "params": {},
+  "details": {
+    "server.brand": "Paper",
+    "server.minecraftVersion": "26.2",
+    "server.version": "26.2-126-c646faf (MC: 26.2)",
+    "server.regionised": "false",
+    "java.version": "25.0.4+7-LTS-189",
+    "heap.maxBytes": "1073741824",
+    "areas": "6",
+    "blocks": "240",
+    "maintenance.scheduled": "enabled=true completed=4 deferred=0 cancelled=0 noWork=9 rows=960 progressed=0 quarantined=0 unverified=0 compactions=1 shards=1",
+    "maintenance.tickScope": "Whole synthetic capture/seal/scheduling window; mixed regions on Folia; no control or causal latency claim"
+  },
+  "metrics": [
+    {"name": "maintenance.window.tick.samples", "value": 15, "unit": "count"},
+    {"name": "maintenance.window.tick.p50", "value": 3.553, "unit": "ms"},
+    {"name": "maintenance.window.tick.p99", "value": 24.4717, "unit": "ms"},
+    {"name": "maintenance.window.tick.max", "value": 24.4717, "unit": "ms"}
+  ],
+  "failures": []
+}

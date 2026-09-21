@@ -1,6 +1,6 @@
 # ADR-0022: Incremental unpublished work and scheduled WAL checkpoints
 
-* Status: implemented; final measurement and server regression pending
+* Status: implemented; unit, measurement and serial platform gates pass (see final M3 audit)
 * Date: 2026-09-21
 * Milestone: M3
 

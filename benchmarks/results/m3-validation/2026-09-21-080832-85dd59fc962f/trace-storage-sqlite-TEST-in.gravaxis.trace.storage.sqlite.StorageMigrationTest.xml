@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.storage.sqlite.StorageMigrationTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-21T08:03:54.959Z" hostname="ISHWARS-PC" time="0.165">
+  <properties/>
+  <testcase name="copiesLegacyHotRowsOnceWithTheirWatermark()" classname="in.gravaxis.trace.storage.sqlite.StorageMigrationTest" time="0.136"/>
+  <testcase name="refusesNewerFormatBeforeCreatingTablesAndReleasesLock()" classname="in.gravaxis.trace.storage.sqlite.StorageMigrationTest" time="0.028"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

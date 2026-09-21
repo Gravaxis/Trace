@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.core.journal.JournalRoundTripTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-09-21T00:12:36.039Z" hostname="ISHWARS-PC" time="0.745">
+  <properties/>
+  <testcase name="a torn tail costs the torn frame and nothing before it" classname="in.gravaxis.trace.core.journal.JournalRoundTripTest" time="0.025"/>
+  <testcase name="every record written is replayed, in order" classname="in.gravaxis.trace.core.journal.JournalRoundTripTest" time="0.015"/>
+  <testcase name="a floor pushes the next position past an applied watermark" classname="in.gravaxis.trace.core.journal.JournalRoundTripTest" time="0.013"/>
+  <testcase name="replay resumes from a position, so an applied prefix is not applied twice" classname="in.gravaxis.trace.core.journal.JournalRoundTripTest" time="0.008"/>
+  <testcase name="reopening the journal appends after the last valid frame" classname="in.gravaxis.trace.core.journal.JournalRoundTripTest" time="0.012"/>
+  <testcase name="an orderly shutdown is distinguishable from a crash" classname="in.gravaxis.trace.core.journal.JournalRoundTripTest" time="0.007"/>
+  <testcase name="frames written by earlier runs survive reopening" classname="in.gravaxis.trace.core.journal.JournalRoundTripTest" time="0.013"/>
+  <testcase name="a flipped bit anywhere in a frame stops the replay there" classname="in.gravaxis.trace.core.journal.JournalRoundTripTest" time="0.635"/>
+  <testcase name="frames left over from a previous run are not replayed as live data" classname="in.gravaxis.trace.core.journal.JournalRoundTripTest" time="0.011"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -8,7 +8,7 @@ and an unmet item is reported as unmet rather than carried quietly.
 | M0 | Skeleton: modules, build, licences, a plugin that loads on Paper and Folia | **done** |
 | M1 | Benchmark and crash harness — built *before* any feature | **done** |
 | M2 | Walking skeleton: one event type captured with zero allocation, journalled, sealed into a shard, queried back, rolled back | **done** |
-| M3 | Storage engine: sharding, sealing, compaction, manifest, dictionaries, blobs, retention, purge, verify, quarantine | **in progress** |
+| M3 | Storage engine: sharding, sealing, compaction, manifest, dictionaries, blobs, retention, purge, verify, quarantine | **done** |
 | M4 | Full capture: every kind and cause, block entities, entities, containers, sessions | planned |
 | M5 | Mass edits: WorldEdit and FAWE hooks, section-diff patches, densification | planned |
 | M6 | Rollback engine complete: streaming, chunk batching, adaptive budget, preview, resume, undo, relight | planned |
@@ -150,7 +150,11 @@ silent:
   lock;
 * and the gate said "zero allocation" about a hand-written stand-in for the encoder.
 
-## M3 implementation and remaining proof
+## M3 implementation and proof history
+
+**Final status:** complete for the scope and gates in the
+[final audit](docs/design/m3-final-audit.md). The dated implementation history below
+is preserved; the final close-out explicitly resolves its implementation blockers.
 
 The file-level plan and pre-implementation self-attack are in
 [m3-execution-plan.md](docs/design/m3-execution-plan.md). ADR-0016 through ADR-0020
@@ -218,6 +222,30 @@ memory and real-server maintenance tick impact are **not measured**. Power-loss
 and arbitrary-instruction crash guarantees remain unproven. Earlier M2 capture and
 rollback limitations still apply except where a named follow-up gate resolves them.
 M3 remains **in progress**; M4 has not started.
+
+### 2026-09-21 final close-out
+
+The [final plan and self-review](docs/design/m3-final-plan.md) led to retained
+incremental compaction, seal and retention progress; scheduled content verification
+and checkpoint retry; the additive multiset accumulator; and shared quarantine
+fault-injection proof. Gates assert progress, cancellation, publication, corrupt
+versus unverified content, held-reader checkpoint deferral, successful truncation,
+and actual scheduler effects. Process kills cover incremental copy and both sides
+of publication. The complete-removal audit regression failed before its fix.
+
+The [final audit](docs/design/m3-final-audit.md) links the committed full serial
+regression and the separately scoped post-audit-fix retest. Both pinned platforms
+pass their exercised scenarios. Committed maintenance costs now include seal,
+content verify and checkpoint work; scheduled scenarios record tick observations.
+SPIKE-2 separately measures explicit and incremental sealing through the same
+aggregate reader, without reopening the private database.
+
+Cooperative budgets are not hard deadlines. No progress bound under overload or
+long-held readers, power-loss guarantee, production latency claim, native-memory
+bound or density savings ratio follows. Full structural/blob verification remains
+explicit; unfinished maintenance restarts safely after process death. Earlier
+*Not established* notes retain their original scope except where a named gate in
+the final audit resolves them. M3 is **done**; M4 has not started.
 
 ## Open questions carried forward
 

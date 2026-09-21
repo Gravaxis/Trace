@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.storage.sqlite.IncrementalMaintenanceTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-09-21T08:03:39.380Z" hostname="ISHWARS-PC" time="1.231">
+  <properties/>
+  <testcase name="checkpointDefersForSnapshotThenActuallyTruncates()" classname="in.gravaxis.trace.storage.sqlite.IncrementalMaintenanceTest" time="0.414"/>
+  <testcase name="cancelAndDestructiveMutationCannotPublishStaleRows()" classname="in.gravaxis.trace.storage.sqlite.IncrementalMaintenanceTest" time="0.118"/>
+  <testcase name="completeRemovalAuditCountsRemovedRowsAndDoesNotNameAFutureShard()" classname="in.gravaxis.trace.storage.sqlite.IncrementalMaintenanceTest" time="0.088"/>
+  <testcase name="outputBoundaryCancellationDoesNotPublishAndReaderPinsRetiredFiles()" classname="in.gravaxis.trace.storage.sqlite.IncrementalMaintenanceTest" time="0.135"/>
+  <testcase name="scheduledVerifyDistinguishesCancellationHealthyAndCorruptInput()" classname="in.gravaxis.trace.storage.sqlite.IncrementalMaintenanceTest" time="0.096"/>
+  <testcase name="incrementalSealPublishesOnlyFrozenPrefix()" classname="in.gravaxis.trace.storage.sqlite.IncrementalMaintenanceTest" time="0.055"/>
+  <testcase name="retentionYieldsPreservesCutoffAndPreventsReplay()" classname="in.gravaxis.trace.storage.sqlite.IncrementalMaintenanceTest" time="0.1"/>
+  <testcase name="oversizedMergeRetainsProgressAndAllowsAppendBetweenSteps()" classname="in.gravaxis.trace.storage.sqlite.IncrementalMaintenanceTest" time="0.094"/>
+  <testcase name="scheduleActuallyQuarantinesRetriesCheckpointAndSeals()" classname="in.gravaxis.trace.storage.sqlite.IncrementalMaintenanceTest" time="0.092"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

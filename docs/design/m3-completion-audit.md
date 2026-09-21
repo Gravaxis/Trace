@@ -1,5 +1,9 @@
 # M3 completion audit — 2026-09-21
 
+**Historical audit:** the blockers below were subsequently addressed. See the
+[final audit](m3-final-audit.md) for the named gates, revision boundaries and limits.
+The original findings and measurements below remain preserved for their scope.
+
 The five follow-up steps in m3-completion-plan.md were executed in order. This is
 an audit of the exercised claims, not a declaration that M3 is complete. M4 has
 not started.

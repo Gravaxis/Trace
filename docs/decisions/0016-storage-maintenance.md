@@ -1,6 +1,6 @@
 # ADR-0016: Single-database publication and explicit storage maintenance
 
-* Status: explicit APIs implemented and tested; operational completion outstanding
+* Status: implemented; operational gates complete under ADR-0022 and the final M3 audit
 * Date: 2026-09-21
 * Milestone: M3
 
@@ -71,3 +71,8 @@ the committed synthetic maintenance measurements show both completion with captu
 drops and short-budget deferral without observed drops. This does not establish
 eventual progress, bounded seal/verify or production latency. WAL checkpoint
 scheduling and the additive multiset accumulator remain outstanding.
+
+The final follow-up in ADR-0022 resolves those implementation blockers with
+incremental scheduled work, checkpoint retry and an additive multiset/count check.
+The [final audit](../design/m3-final-audit.md) preserves the initial statements
+above as history and links the completed gates and measurement limitations.

@@ -5,7 +5,7 @@ what is already true, and what will fail if you ignore them. It is written for a
 but a human contributor gains from it too.
 
 Trace is a block, container and entity logging plugin with rollback, for Paper and Folia servers.
-Nothing is released. Milestones M0 to M2 are complete; M3 (the storage engine) is in progress.
+Nothing is released. Milestones M0 to M3 are complete; M4 has not started.
 
 Four documents carry the rest: [ROADMAP.md](ROADMAP.md) for what is built and, under each item,
 what is **not** established; [docs/decisions/](docs/decisions) for the ADRs that bind future
@@ -188,8 +188,8 @@ exhaustion is now contained by counted rejection and persistent loss bounds, wit
 a real process-kill test (ADR-0019); reclamation/spill remains absent. Real-crash
 rollback resume now passes on both pinned platforms (ADR-0020). trace-paper now
 has configuration unit tests. The remaining historical limits below still apply.
-For the current M3 blockers and measurements, read
-[the completion audit](docs/design/m3-completion-audit.md), not the older proposal
+For the final M3 gates and measurement limits, read
+[the final audit](docs/design/m3-final-audit.md), not the older proposal
 as if every proposed item had shipped.
 
 Do not describe any of these as working. The full list lives in ROADMAP.md under each milestone.
