@@ -86,3 +86,9 @@ the absence of skips/failures, and writes raw XML plus source provenance. It boo
 no server. The forced-kill case signals only after an accepted entry and a FULL
 rejection, then requires a nonzero child exit and exact recovery on repeated reopen.
 It does not claim recovery from a kill partway through publication or rejection.
+
+Committed-source evidence for `232b3a53d0c4` is under
+[payload-queue results](../../benchmarks/results/payload-queue/2026-09-21-100331-232b3a53d0c4/complete.json).
+The fresh scoped suite passed all required branches without skips. Full `build`,
+`verifyModuleGraph` and the existing `testWithoutEscapeAnalysis` gate also passed;
+the latter does not measure this new, disconnected transport.

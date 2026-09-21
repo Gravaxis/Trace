@@ -259,6 +259,15 @@ branch, post-tick world state and exact exposed row content; Folia asserts separ
 region ownership. The client shares server packet codecs, so independent wire
 compatibility is not established. Full capture remains incomplete.
 
+The [bounded payload queue](docs/design/m4-bounded-payload-queue.md) now keeps event
+words and payload bytes in one fixed-capacity entry until acknowledged. Its named
+branch, corruption-refusal, concurrency and process-kill tests have
+[committed evidence](benchmarks/results/payload-queue/2026-09-21-100331-232b3a53d0c4/complete.json).
+This is a transport prerequisite, not live payload capture: atomic journalling and
+recovery that converts rejection bounds into GapRecords remain unimplemented.
+Queue allocation and performance are **not measured**; power loss and crashes
+partway through an offer/rejection remain unproven.
+
 Tracked in the ADRs rather than here, but the ones that shape upcoming work:
 
 * **M1** — whether JMH's `gc.alloc.rate.norm` can report exactly `0.0` for a provably empty

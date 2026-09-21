@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.core.capture.BoundedPayloadQueueTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-21T10:03:30.510Z" hostname="ISHWARS-PC" time="0.465">
+  <properties/>
+  <testcase name="existingInvalidFilesAreRefusedWithoutReinitializing()" classname="in.gravaxis.trace.core.capture.BoundedPayloadQueueTest" time="0.124"/>
+  <testcase name="ticketExhaustionDoesNotWrapIntoOldAcknowledgements()" classname="in.gravaxis.trace.core.capture.BoundedPayloadQueueTest" time="0.013"/>
+  <testcase name="actualProcessKillPreservesPublishedEntryAndOverflowBounds()" classname="in.gravaxis.trace.core.capture.BoundedPayloadQueueTest" time="0.196"/>
+  <testcase name="separateProducerAndConsumerNeverObserveTornOrReorderedPayloads()" classname="in.gravaxis.trace.core.capture.BoundedPayloadQueueTest" time="0.062"/>
+  <testcase name="corruptCursorsAndPayloadLengthCannotBeAcknowledged()" classname="in.gravaxis.trace.core.capture.BoundedPayloadQueueTest" time="0.023"/>
+  <testcase name="acknowledgementControlsReuseAndCannotReleaseAnotherGeneration()" classname="in.gravaxis.trace.core.capture.BoundedPayloadQueueTest" time="0.022"/>
+  <testcase name="rejectionBranchesAreDistinctAndBoundsOnlyWiden()" classname="in.gravaxis.trace.core.capture.BoundedPayloadQueueTest" time="0.009"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

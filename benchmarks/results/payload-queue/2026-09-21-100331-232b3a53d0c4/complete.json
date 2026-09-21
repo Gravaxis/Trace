@@ -1,0 +1,1 @@
+{"complete":true,"scope":"Bounded queue branch, concurrency, corruption refusal and process-kill tests","limits":"Transport primitive only; not live capture or journal/GapRecord integration. Power loss unproven. Allocation and performance not measured."}
