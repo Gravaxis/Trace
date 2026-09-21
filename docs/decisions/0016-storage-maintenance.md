@@ -64,3 +64,10 @@ StorageCrashTest kills migration after copying legacy rows inside the transactio
 and after commit. It checks the old/new format before recovery, then exact row
 fields and the applied watermark after two reopens. These two boundaries now have
 process-kill proof; arbitrary instruction interruption and power loss remain open.
+
+ADR-0021 and the M3 completion audit supersede the initial lack of configuration,
+scheduling and rewrite budgets above. Shared maintenance contracts now exist, and
+the committed synthetic maintenance measurements show both completion with capture
+drops and short-budget deferral without observed drops. This does not establish
+eventual progress, bounded seal/verify or production latency. WAL checkpoint
+scheduling and the additive multiset accumulator remain outstanding.

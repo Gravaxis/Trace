@@ -178,7 +178,7 @@ record implemented decisions and deviations from that plan.
   [STORAGE-DENSITY.md](benchmarks/STORAGE-DENSITY.md) states denominators and exclusions. Different
   data and semantics do not establish production savings, a migration ratio, or logger superiority.
 
-**Not established / not complete:** automatic maintenance scheduling and configuration, bounded
+**Initial M3 proof gaps (historical; follow-up below):** automatic maintenance scheduling and configuration, bounded
 maintenance budgets/cancellation, migration interrupted mid-transaction, large-data maintenance
 memory/latency gates, and power-loss durability. The plan's additive multiset accumulator and shared
 storage-contract expansion are not implemented; SQLite-specific complete-field tests are the current
@@ -191,6 +191,33 @@ M3 absorbs the real-crash resume debt because compaction must preserve resumabil
 producer exhaustion because silent overwrite would invalidate storage preservation claims. Full
 transport reclamation/spill remains open. The contended-chunk apply path remains explicitly untested;
 M3 does not change its scheduling protocol. M4 has not started, and M3 is not declared done.
+
+### 2026-09-21 follow-up: five-step execution and audit
+
+The [completion plan](docs/design/m3-completion-plan.md) and
+[completion audit](docs/design/m3-completion-audit.md) distinguish resolved gaps
+from remaining requirements. Migration and producer exhaustion now have asserted
+process-kill/reopen branches. Bounded/cancellable rewrites, typed template-backed
+configuration, consumer scheduling and explicit retention opt-in are implemented;
+scheduled passes are asserted on both pinned platforms. Shared EventStoreContract
+now covers complete-field compaction/suffix preservation, purge replay exclusion,
+retention boundaries and durable blob references. Cancellation/orphan cleanup and
+bounded sweep continuation have regression tests that failed before their fixes.
+
+Maintenance costs are now measured for the committed synthetic capture/consumer
+workload under [results/maintenance](benchmarks/results/maintenance); the tool and
+scope are in [MAINTENANCE.md](benchmarks/MAINTENANCE.md). Completion-budget cases
+merged but dropped captured records when the ring filled. Short-budget cases
+deferred and recorded no drops in that fixture. This does not establish eventual
+progress or harmless maintenance under production load.
+
+**Still incomplete:** resumable progress beyond admission/deadline limits, bounded
+scheduled verify, scheduled WAL checkpoint lifecycle, the additive multiset
+accumulator, and shared quarantine fault-injection proof. Seal/verify cost, native
+memory and real-server maintenance tick impact are **not measured**. Power-loss
+and arbitrary-instruction crash guarantees remain unproven. Earlier M2 capture and
+rollback limitations still apply except where a named follow-up gate resolves them.
+M3 remains **in progress**; M4 has not started.
 
 ## Open questions carried forward
 

@@ -4,6 +4,12 @@
 * **Date:** 2026-09-20
 * **Milestone:** M0 decision; implementation remains outstanding as of M3 work
 
+**2026-09-21 update:** the current maintenance schema now has a typed parser and
+packaged template, backup/version/error handling and foreign-key preservation,
+tested in MaintenanceConfigTest. `:trace-paper:generateConfigReference` emits the
+commented reference. This implements the current keys, not a claim about future
+configuration schemas or a hot-reload feature.
+
 ## Context
 
 The brief requires YAML mapped to typed objects, `config-version` as the first key, migrations with

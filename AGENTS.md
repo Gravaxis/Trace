@@ -5,10 +5,10 @@ what is already true, and what will fail if you ignore them. It is written for a
 but a human contributor gains from it too.
 
 Trace is a block, container and entity logging plugin with rollback, for Paper and Folia servers.
-Nothing is released. Milestones M0 to M2 are complete; M3 (the storage engine) is next.
+Nothing is released. Milestones M0 to M2 are complete; M3 (the storage engine) is in progress.
 
 Four documents carry the rest: [ROADMAP.md](ROADMAP.md) for what is built and, under each item,
-what is **not** established; [docs/decisions/](docs/decisions) for the sixteen ADRs that bind future
+what is **not** established; [docs/decisions/](docs/decisions) for the ADRs that bind future
 work; [CONTRIBUTING.md](CONTRIBUTING.md) for the contributor-facing version of the rules below; and
 [docs/design/m3-storage-engine.md](docs/design/m3-storage-engine.md), a reviewed proposal for the
 next milestone whose most useful half is the list of traps a reviewer found in it.
@@ -182,6 +182,15 @@ Property-test scale: `-Dtrace.property.cases=100000 -Dtrace.property.seed=<n>` (
 ---
 
 ## 7. Known defects and unproven claims
+
+**2026-09-21 follow-up:** the list below records the M2 baseline. Producer-slot
+exhaustion is now contained by counted rejection and persistent loss bounds, with
+a real process-kill test (ADR-0019); reclamation/spill remains absent. Real-crash
+rollback resume now passes on both pinned platforms (ADR-0020). trace-paper now
+has configuration unit tests. The remaining historical limits below still apply.
+For the current M3 blockers and measurements, read
+[the completion audit](docs/design/m3-completion-audit.md), not the older proposal
+as if every proposed item had shipped.
 
 Do not describe any of these as working. The full list lives in ROADMAP.md under each milestone.
 
