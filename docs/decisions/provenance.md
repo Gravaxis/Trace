@@ -204,3 +204,29 @@ Its generated report is `benchmarks/results/density/2026-09-21-080557-fcc56dff48
 Private input was explicitly empty and was not reopened. The preceding reader
 output at 17c3b6e came from a wrapper invocation that failed configuration-cache
 serialization; STORAGE-DENSITY.md records that distinction.
+
+## 2026-09-21 — M4 design API inventory
+
+Read local repository sources for the capture, journal, dictionaries, storage,
+rollback and server harness before writing `docs/design/m4-capture-plan.md`.
+Ran JDK 25.0.4 javap against both pinned Gradle-cache jars:
+`io.papermc.paper:paper-api:26.2.build.126-stable` and
+`dev.folia:folia-api:26.2.build.7-beta`.
+
+Verified the candidate block-event classes and accessors named in the plan:
+BlockMultiPlaceEvent.getReplacedBlockStates, piston extend/retract getBlocks,
+BlockFromToEvent.getToBlock, growth/form/spread/fade getNewState (including
+inheritance), BlockBurnEvent.getIgnitingBlock, block/entity explosion blockList,
+and EntityChangeBlockEvent.getBlock/getBlockData. Inspected InventoryClickEvent,
+InventoryDragEvent and InventoryMoveItemEvent, PlayerJoinEvent/PlayerQuitEvent,
+EntitySpawnEvent/EntityDeathEvent and HangingPlaceEvent/HangingBreakEvent.
+EntityDeathEvent implements Cancellable in both pinned jars.
+
+Also verified Block/BlockState.getBlockData, BlockData.getAsString,
+ItemStack.serializeAsBytes/deserializeBytes, Entity.getUniqueId/getScheduler and
+Bukkit.isOwnedByCurrentRegion overloads. Existence of Entity.getScheduler does
+not authorize its use under the repository's current scheduler restriction.
+These are signature checks, not proof of ownership, allocation, event ordering,
+NBT fidelity or natural server behavior. Internal NBT/state handles and protocol
+client packet contracts remain unverified; no new dependency was selected.
+No forbidden project source or private database was read.
