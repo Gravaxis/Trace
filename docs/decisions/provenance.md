@@ -197,3 +197,10 @@ read transaction is pinned; retry after release reports success and leaves an em
 WAL. This is a tested behavior of the pinned engine, not an inferred hard deadline.
 The new scheduled tick measurements reuse TickRecorder's already pinned Paper/Folia
 event API. No new Minecraft API or forbidden project source was needed.
+
+The final synthetic SPIKE-2 refresh at fcc56df records both explicit full-window
+and incremental-prefix sealing through the same aggregate-only DensityReader.
+Its generated report is `benchmarks/results/density/2026-09-21-080557-fcc56dff4830/density.json`.
+Private input was explicitly empty and was not reopened. The preceding reader
+output at 17c3b6e came from a wrapper invocation that failed configuration-cache
+serialization; STORAGE-DENSITY.md records that distinction.

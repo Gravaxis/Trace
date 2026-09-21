@@ -65,3 +65,16 @@ Format-3 schema overhead includes empty blob and maintenance tables; blob
 payloads, dictionaries, capture rings and journals are absent from the fixture.
 The second report deliberately marks private input as not measured for that run.
 These reports have different workloads and do not establish a savings ratio.
+
+The final M3 synthetic refresh is
+`results/density/2026-09-21-080557-fcc56dff4830/density.json`.
+It records full-window and incremental-prefix sealing separately, using the same
+DensityReader and seeded rows, and explicitly marks private input as not supplied.
+No private database was opened for this refresh.
+
+The preceding generated report at
+`results/density/2026-09-21-080451-17c3b6eb4916/density.json` is retained as an attempt:
+its reader finished, but Gradle exited unsuccessfully because the new argument
+provider captured a Project object while saving the configuration cache. It is
+not the final successful invocation. The path-string fix at fcc56df was followed
+by a successful wrapper run; use that later report for the completion ledger.
