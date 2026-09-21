@@ -20,6 +20,8 @@ dependencies {
   // holds it. Gate P1 measuring a stand-in was the defect this dependency removes.
   implementation(project(":trace-core"))
   implementation(project(":trace-storage-sqlite"))
+  implementation(project(":trace-paper"))
+  implementation(libs.slf4j.api)
   implementation(libs.sqlite.jdbc)
   "jmhImplementation"(libs.jmh.core)
   "jmhAnnotationProcessor"(libs.jmh.generator)
@@ -155,4 +157,30 @@ tasks.register<JavaExec>("storageDensity") {
       scratch.get().asFile.absolutePath)
   })
   maxHeapSize = "1g"
+}
+
+tasks.register<JavaExec>("maintenanceCosts") {
+  group = "verification"
+  description = "Measures synthetic maintenance under real capture/consumer load; no server."
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("in.gravaxis.trace.bench.MaintenanceCosts")
+  workingDir(rootProject.layout.projectDirectory)
+  maxHeapSize = "1g"
+  args(layout.buildDirectory.dir("maintenance").get().asFile.absolutePath,
+    rootProject.layout.projectDirectory.dir("benchmarks/results/maintenance").asFile.absolutePath)
+  outputs.upToDateWhen { false }
+}
+
+tasks.register<JavaExec>("m3Evidence") {
+  group = "verification"
+  description = "Runs M3 correctness gates and generates a commit-labelled evidence directory."
+  dependsOn(":trace-paper:test", ":trace-storage-sqlite:test", ":trace-core:test",
+    ":trace-test-harness:integrationTest", ":trace-test-harness:storageMaintenanceTest",
+    ":trace-test-harness:scheduledMaintenanceTest", ":trace-test-harness:crashRollbackTest",
+    ":trace-test-harness:crashJournalTest")
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("in.gravaxis.trace.bench.M3Evidence")
+  workingDir(rootProject.layout.projectDirectory)
+  args(rootProject.layout.projectDirectory.asFile.absolutePath)
+  outputs.upToDateWhen { false }
 }

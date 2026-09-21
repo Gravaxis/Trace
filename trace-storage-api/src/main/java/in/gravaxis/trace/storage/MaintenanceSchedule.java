@@ -22,6 +22,8 @@ public final class MaintenanceSchedule {
     private volatile long cancelledPasses;
     private volatile long noWork;
     private volatile long rows;
+    private volatile boolean inProgress;
+    private volatile long lastElapsedNanos;
 
     public MaintenanceSchedule(EventStore store, MaintenancePolicy policy, BooleanSupplier cancelled, long now) {
         this.store = store;
@@ -39,14 +41,21 @@ public final class MaintenanceSchedule {
         }
         var budget = new MaintenanceBudget(policy.maxInputRows(), policy.maxShards(), policy.budgetMillis(), cancelled);
         MaintenanceResult result;
-        if (retentionTurn && policy.retentionMillis() > 0) {
-            result = store.expireBefore(now - policy.retentionMillis(), budget);
-        } else result = store.compact(budget);
+        long start = System.nanoTime();
+        inProgress = true;
+        try {
+            if (retentionTurn && policy.retentionMillis() > 0)
+                result = store.expireBefore(now - policy.retentionMillis(), budget);
+            else result = store.compact(budget);
+        } finally {
+            lastElapsedNanos = System.nanoTime() - start;
+            inProgress = false;
+        }
         retentionTurn = !retentionTurn;
         switch (result.state()) {
             case COMPLETED -> {
-                completed++;
                 rows += result.rows();
+                completed++;
             }
             case DEFERRED -> deferred++;
             case CANCELLED -> cancelledPasses++;
@@ -61,6 +70,14 @@ public final class MaintenanceSchedule {
 
     public long completed() {
         return completed;
+    }
+
+    public boolean inProgress() {
+        return inProgress;
+    }
+
+    public long lastElapsedNanos() {
+        return lastElapsedNanos;
     }
 
     public long deferred() {

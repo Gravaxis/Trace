@@ -139,6 +139,18 @@ public final class StoreConsumer implements Runnable {
         return maintenance.completed();
     }
 
+    public boolean maintenanceInProgress() {
+        return maintenance.inProgress();
+    }
+
+    public long maintenanceElapsedNanos() {
+        return maintenance.lastElapsedNanos();
+    }
+
+    public long maintenanceDeferred() {
+        return maintenance.deferred();
+    }
+
     /**
      * Drains everything, forces it, and seals it into immutable storage.
      *

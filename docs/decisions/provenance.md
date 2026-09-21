@@ -183,3 +183,8 @@ existing SnakeYAML 2.2 jar's Yaml(SafeConstructor), load(String), dumpAsMap(Obje
 SafeConstructor(LoaderOptions) and LoaderOptions.setAllowDuplicateKeys(boolean).
 SnakeYAML remains server-provided compileOnly, as ADR-0005 specifies. No new
 Minecraft API call is introduced by consumer-thread maintenance scheduling.
+
+The off-server maintenance runner uses slf4j-api 2.0.17, matching the pinned Paper
+API POM (local Gradle cache). javap verified NOPLogger.NOP_LOGGER in that jar. It
+loads StoreConsumer directly without Bukkit; no server implementation is bundled
+into the benchmark.

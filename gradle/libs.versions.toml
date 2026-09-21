@@ -21,6 +21,7 @@ jmh = "1.37"
 # parent-first, so this is the version Trace actually runs against. See ADR-0003.
 sqlite-jdbc = "3.49.1.0"
 snakeyaml = "2.2"
+slf4j = "2.0.17"
 roaringbitmap = "1.6.23"
 zstd-jni = "1.5.7-17"
 jspecify = "1.0.1"
@@ -52,6 +53,7 @@ archunit = { module = "com.tngtech.archunit:archunit", version.ref = "archunit" 
 
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
 snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 roaringbitmap = { module = "org.roaringbitmap:RoaringBitmap", version.ref = "roaringbitmap" }
 zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd-jni" }
 
