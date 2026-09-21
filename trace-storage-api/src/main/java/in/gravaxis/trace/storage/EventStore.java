@@ -31,6 +31,12 @@ import org.jspecify.annotations.Nullable;
  */
 public interface EventStore extends AutoCloseable {
 
+    /** Bounded compaction; admitted work may be a subset of live shards. */
+    MaintenanceResult compact(MaintenanceBudget budget) throws StoreException;
+
+    /** Bounded atomic retention: defers if the complete selection exceeds admission limits. */
+    MaintenanceResult expireBefore(long cutoffMillis, MaintenanceBudget budget) throws StoreException;
+
     /** Durably stores an opaque, versioned payload; identity is independent of capture slots. */
     String putBlob(int version, byte[] payload) throws StoreException;
 

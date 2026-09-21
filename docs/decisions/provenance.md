@@ -173,3 +173,13 @@ Its aggregate report is `benchmarks/results/density/2026-09-21-e82a6dda926e/dens
 The same dbstat reader was used. This does not repeat or replace the private-input
 walk recorded in `benchmarks/results/density/2026-09-21-e643f099dcdc/density.json`.
 No dataset equivalence or production savings ratio is established.
+
+## 2026-09-21 — bounded maintenance APIs
+
+Verified with javap against the pinned sqlite-jdbc 3.49.1.0 jar:
+org.sqlite.ProgressHandler.setHandler(Connection,int,ProgressHandler),
+clearHandler(Connection), and protected progress() returning int. Verified the
+existing SnakeYAML 2.2 jar's Yaml(SafeConstructor), load(String), dumpAsMap(Object),
+SafeConstructor(LoaderOptions) and LoaderOptions.setAllowDuplicateKeys(boolean).
+SnakeYAML remains server-provided compileOnly, as ADR-0005 specifies. No new
+Minecraft API call is introduced by consumer-thread maintenance scheduling.

@@ -7,11 +7,20 @@ plugins {
 
 description = "The Trace plugin: listeners, commands, scheduling, configuration and the bootstrap."
 
+tasks.register<Copy>("generateConfigReference") {
+  group = "documentation"
+  description = "Generates the commented configuration reference from the packaged template."
+  from(layout.projectDirectory.file("src/main/resources/config.yml"))
+  into(rootProject.layout.projectDirectory.dir("docs/generated"))
+}
+
 dependencies {
   implementation(project(":trace-api"))
   implementation(project(":trace-core"))
   implementation(project(":trace-storage-api"))
   implementation(project(":trace-storage-sqlite"))
+  compileOnly(libs.snakeyaml)
+  testImplementation(libs.snakeyaml)
 }
 
 paperPluginYaml {

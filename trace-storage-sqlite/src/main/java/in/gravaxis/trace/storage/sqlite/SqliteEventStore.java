@@ -15,6 +15,8 @@ import in.gravaxis.trace.core.time.TraceEpoch;
 import in.gravaxis.trace.storage.CursorPosition;
 import in.gravaxis.trace.storage.EventStore;
 import in.gravaxis.trace.storage.GapRecord;
+import in.gravaxis.trace.storage.MaintenanceBudget;
+import in.gravaxis.trace.storage.MaintenanceResult;
 import in.gravaxis.trace.storage.MutationCursor;
 import in.gravaxis.trace.storage.OperationProgress;
 import in.gravaxis.trace.storage.OperationState;
@@ -91,6 +93,24 @@ public final class SqliteEventStore implements EventStore {
 
     private long appliedLsn;
     private int activeScans;
+    private @Nullable MaintenanceControl maintenance;
+
+    private void checkMaintenance() throws SQLException {
+        if (maintenance != null) maintenance.check();
+    }
+
+    private void installMaintenance(Connection connection) throws SQLException {
+        if (maintenance != null) maintenance.install(connection);
+    }
+
+    private void clearMaintenanceHandler() {
+        try {
+            org.sqlite.ProgressHandler.clearHandler(writer);
+        } catch (SQLException e) {
+            throw new IllegalStateException("Could not clear maintenance callback", e);
+        }
+    }
+
     private java.util.function.Consumer<String> maintenanceProbe = phase -> {};
 
     void maintenanceProbe(java.util.function.Consumer<String> probe) {
@@ -377,6 +397,7 @@ public final class SqliteEventStore implements EventStore {
         long written = 0;
         RowDigest expected = new RowDigest();
         try (Connection shard = DriverManager.getConnection(jdbcUrl(shardFile))) {
+            installMaintenance(shard);
             SqliteSchema.applySealPragmas(shard);
             SqliteSchema.createShard(shard);
             shard.setAutoCommit(false);
@@ -390,6 +411,7 @@ public final class SqliteEventStore implements EventStore {
                 select.setLong(1, maxRowId);
                 try (ResultSet rows = select.executeQuery()) {
                     while (rows.next()) {
+                        checkMaintenance();
                         expected.add(
                                 rows.getInt(1),
                                 rows.getLong(2),
@@ -908,10 +930,11 @@ public final class SqliteEventStore implements EventStore {
             throw new StoreException(StoreException.Reason.CONTENDED, "Maintenance deferred while scans are open");
     }
 
-    private static Connection readShard(Path file) throws SQLException {
+    private Connection readShard(Path file) throws SQLException {
         Connection connection = DriverManager.getConnection("jdbc:sqlite:" + file.toUri() + "?mode=ro");
         try {
             SqliteSchema.applyReadPragmas(connection);
+            installMaintenance(connection);
             return connection;
         } catch (SQLException e) {
             connection.close();
@@ -1065,20 +1088,59 @@ public final class SqliteEventStore implements EventStore {
 
     @Override
     public synchronized long compact() throws StoreException {
-        return rewrite(null, 0, 0, false);
+        return requireFinished(compact(MaintenanceBudget.defaults()));
+    }
+
+    @Override
+    public synchronized MaintenanceResult compact(MaintenanceBudget budget) throws StoreException {
+        return boundedRewrite(null, 0, 0, false, budget);
+    }
+
+    @Override
+    public synchronized MaintenanceResult expireBefore(long cutoffMillis, MaintenanceBudget budget)
+            throws StoreException {
+        if (cutoffMillis == Long.MIN_VALUE) throw new IllegalArgumentException("Empty retention window");
+        return boundedRewrite(null, Long.MIN_VALUE, cutoffMillis, true, budget);
+    }
+
+    private static long requireFinished(MaintenanceResult result) throws StoreException {
+        if (result.state() == MaintenanceResult.State.DEFERRED || result.state() == MaintenanceResult.State.CANCELLED)
+            throw new StoreException(StoreException.Reason.CONTENDED, "Maintenance " + result.state());
+        return result.rows();
+    }
+
+    private MaintenanceResult boundedRewrite(
+            @Nullable Integer actor, long from, long to, boolean remove, MaintenanceBudget budget)
+            throws StoreException {
+        MaintenanceControl control = new MaintenanceControl(budget);
+        maintenance = control;
+        try {
+            control.install(writer);
+            control.check();
+            if (remove && activeScans != 0) return new MaintenanceResult(MaintenanceResult.State.DEFERRED, 0);
+            long rows = rewrite(actor, from, to, remove);
+            return new MaintenanceResult(
+                    rows == 0 ? MaintenanceResult.State.NO_WORK : MaintenanceResult.State.COMPLETED, rows);
+        } catch (StoreException | SQLException e) {
+            if (control.stopped != null && !control.published) return new MaintenanceResult(control.stopped, 0);
+            if (e instanceof StoreException failure) throw failure;
+            throw new StoreException(StoreException.Reason.INTERNAL, "Maintenance failed", e);
+        } finally {
+            clearMaintenanceHandler();
+            maintenance = null;
+        }
     }
 
     @Override
     public synchronized long expireBefore(long cutoffMillis) throws StoreException {
-        requireNoScans();
-        return rewrite(null, Long.MIN_VALUE, cutoffMillis, true);
+        return requireFinished(expireBefore(cutoffMillis, MaintenanceBudget.defaults()));
     }
 
     @Override
     public synchronized long purgeActor(int actorId, long fromMillis, long toMillis) throws StoreException {
         requireNoScans();
         if (fromMillis >= toMillis) throw new IllegalArgumentException("Empty or inverted purge window");
-        return rewrite(actorId, fromMillis, toMillis, true);
+        return requireFinished(boundedRewrite(actorId, fromMillis, toMillis, true, MaintenanceBudget.defaults()));
     }
 
     private List<Exclusion> exclusions() throws SQLException {
@@ -1243,7 +1305,7 @@ public final class SqliteEventStore implements EventStore {
 
     private long rewrite(@Nullable Integer actor, long from, long to, boolean remove) throws StoreException {
         try {
-            List<ShardRef> inputs = liveShards(Long.MIN_VALUE, Long.MAX_VALUE);
+            List<ShardRef> inputs = maintenanceInputs(remove);
             if (!remove && inputs.size() < 2) return 0;
             try (var s = writer.createStatement()) {
                 s.execute("DROP TABLE IF EXISTS temp.merge_event");
@@ -1263,6 +1325,7 @@ public final class SqliteEventStore implements EventStore {
                                     "INSERT INTO temp.merge_event VALUES(?,?,?,?,?,?,?,?,?,0)")) {
                         long seen = 0;
                         while (rows.next()) {
+                            checkMaintenance();
                             seen++;
                             long timestamp = ShardKeys.timestampOf(shard.baseMillis(), rows.getLong(3));
                             if (remove && selection.matches(rows.getInt(7), timestamp)) {
@@ -1302,6 +1365,7 @@ public final class SqliteEventStore implements EventStore {
                 bytes = Files.size(file);
             }
             maintenanceProbe.accept("rewrite.output-forced");
+            checkMaintenance();
             writer.setAutoCommit(false);
             if (remove) {
                 try (var s = writer.prepareStatement(
@@ -1357,15 +1421,18 @@ public final class SqliteEventStore implements EventStore {
             }
             audit(remove ? "REMOVE" : "COMPACT", id, remove ? removed : copied);
             writer.commit();
+            if (maintenance != null) maintenance.published = true;
             maintenanceProbe.accept("rewrite.committed");
             setAutoCommitQuietly();
             sweepRetired();
             return remove ? removed : copied;
         } catch (SQLException | IOException | StoreException e) {
+            clearMaintenanceHandler();
             rollbackQuietly();
             if (e instanceof StoreException failure) throw failure;
             throw new StoreException(StoreException.Reason.INTERNAL, "Shard rewrite failed", e);
         } finally {
+            clearMaintenanceHandler();
             setAutoCommitQuietly();
             try (var s = writer.createStatement()) {
                 s.execute("DROP TABLE IF EXISTS temp.merge_event");
@@ -1373,6 +1440,43 @@ public final class SqliteEventStore implements EventStore {
                 /* Next pass recreates the temporary table. */
             }
         }
+    }
+
+    private List<ShardRef> maintenanceInputs(boolean remove) throws SQLException {
+        MaintenanceControl control = maintenance;
+        if (control == null) throw new IllegalStateException("Rewrite requires a budget");
+        List<ShardRef> inputs = new ArrayList<>();
+        long total = 0;
+        try (var s = writer.prepareStatement(
+                "SELECT id,file,base_ts,min_ts,max_ts,row_count FROM shard WHERE state=0 ORDER BY id LIMIT ?")) {
+            s.setInt(1, control.budget.maxShards() + 1);
+            try (var rows = s.executeQuery()) {
+                while (rows.next()) {
+                    control.check();
+                    long count = rows.getLong(6);
+                    if (count > control.budget.maxInputRows() - total || inputs.size() == control.budget.maxShards()) {
+                        if (remove || inputs.size() < 2) control.defer();
+                        break;
+                    }
+                    inputs.add(new ShardRef(
+                            rows.getLong(1),
+                            rows.getString(2),
+                            rows.getLong(3),
+                            rows.getLong(4),
+                            rows.getLong(5),
+                            count));
+                    total += count;
+                }
+            }
+        }
+        if (remove) {
+            try (var s = writer.createStatement();
+                    var rows = s.executeQuery("SELECT count(*) FROM main.hot_event")) {
+                rows.next();
+                if (rows.getLong(1) > control.budget.maxInputRows() - total) control.defer();
+            }
+        }
+        return inputs;
     }
 
     /** Exposed for tests and for {@code /trace status}: the position a scan would resume from. */

@@ -56,6 +56,8 @@ public final class TracePluginBridge {
             put(optional, plugin, "armRollbackCrash");
             put(optional, plugin, "compactStorage");
             put(optional, plugin, "maintenanceForTest", String.class);
+            put(optional, plugin, "scheduledMaintenanceForTest");
+            put(optional, plugin, "sealForScheduledTest");
             put(optional, plugin, "gapsBetween", long.class, long.class);
             put(
                     optional,

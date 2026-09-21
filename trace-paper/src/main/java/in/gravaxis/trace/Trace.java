@@ -38,6 +38,31 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Trace extends JavaPlugin implements TraceApi {
 
+    /** Blocking harness seam, called asynchronously; only the consumer runs scheduled maintenance. */
+    @ApiStatus.Internal
+    public String scheduledMaintenanceForTest() throws Exception {
+        if (!System.getProperty("trace.harness.scenario", "").equals("storage-scheduled"))
+            throw new IllegalStateException("Only available in the scheduled maintenance harness");
+        TraceRuntime current = runtime;
+        if (current == null) throw new IllegalStateException("Not running");
+        current.consumer().flushAndSeal(30_000);
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
+        while (current.consumer().maintenanceCompleted() == 0 && System.nanoTime() < deadline) Thread.sleep(20);
+        return current.consumer().maintenanceStatus() + " shards="
+                + current.store().stats().shardCount();
+    }
+
+    /** Creates a seal boundary between real captured batches; no maintenance is performed here. */
+    @ApiStatus.Internal
+    public String sealForScheduledTest() throws Exception {
+        if (!System.getProperty("trace.harness.scenario", "").equals("storage-scheduled"))
+            throw new IllegalStateException("Only available in the scheduled maintenance harness");
+        TraceRuntime current = runtime;
+        if (current == null) throw new IllegalStateException("Not running");
+        current.consumer().flushAndSeal(30_000);
+        return "sealed";
+    }
+
     /** Generation of the published API surface. */
     public static final int API_VERSION = 1;
 

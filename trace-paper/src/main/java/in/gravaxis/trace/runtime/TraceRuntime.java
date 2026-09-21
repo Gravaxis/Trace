@@ -9,6 +9,7 @@
 package in.gravaxis.trace.runtime;
 
 import in.gravaxis.trace.capture.BlockCaptureListener;
+import in.gravaxis.trace.config.MaintenanceConfig;
 import in.gravaxis.trace.core.capture.CaptureService;
 import in.gravaxis.trace.core.journal.JournalFrames;
 import in.gravaxis.trace.core.journal.JournalReader;
@@ -113,6 +114,7 @@ public final class TraceRuntime implements AutoCloseable {
     /** Opens everything, recovers from whatever the last run left behind, and starts capturing. */
     public static TraceRuntime start(Plugin plugin, Logger logger, Path directory) throws StoreException, IOException {
         Files.createDirectories(directory);
+        var maintenancePolicy = MaintenanceConfig.load(directory.resolve("config.yml"), logger::warn);
         Path journalDirectory = directory.resolve("journal");
         Path ringDirectory = directory.resolve("rings");
         Files.createDirectories(journalDirectory);
@@ -157,8 +159,8 @@ public final class TraceRuntime implements AutoCloseable {
         }
 
         CaptureService capture = new CaptureService(ringDirectory, RING_CAPACITY_RECORDS);
-        StoreConsumer consumer =
-                new StoreConsumer(capture, journal, store, logger, FORCE_INTERVAL_MILLIS, SEAL_INTERVAL_MILLIS);
+        StoreConsumer consumer = new StoreConsumer(
+                capture, journal, store, logger, FORCE_INTERVAL_MILLIS, SEAL_INTERVAL_MILLIS, maintenancePolicy);
         Thread consumerThread = new Thread(consumer, "trace-consumer");
         consumerThread.setDaemon(true);
         consumerThread.start();
@@ -411,6 +413,7 @@ public final class TraceRuntime implements AutoCloseable {
                     .formatted(consumer.storeFailures()));
         }
         lines.add("recovery: " + recovery.describe());
+        lines.add("maintenance: " + consumer.maintenanceStatus());
         lines.add("limitations in this build: block states are captured at material granularity,"
                 + " block entities and container contents are not captured yet, and writes use the public"
                 + " block API rather than the flagged internal path");

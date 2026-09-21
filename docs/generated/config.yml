@@ -1,0 +1,13 @@
+config-version: 1
+# Non-destructive compaction runs on the storage consumer after draining capture.
+maintenance-enabled: true
+# Delay between attempts; busy capture defers the pass. Units: ms, s, m, h, d.
+maintenance-interval: 60s
+# Admission limits, not performance promises. Oversized work is visibly deferred.
+maintenance-max-input-rows: 100000
+maintenance-max-shards: 8
+# Cooperative deadline. OS disk stalls cannot be interrupted by this budget.
+maintenance-budget: 50ms
+# Zero disables retention. A positive age explicitly enables history removal.
+# Removed history creates refusal gaps; this is not secure identity erasure.
+retention-age: 0ms

@@ -66,6 +66,7 @@ public final class TraceHarness extends JavaPlugin {
             Map.entry("rollback-crash-write", new RollbackResumeScenario()),
             Map.entry("rollback-crash-verify", new RollbackResumeScenario()),
             Map.entry("storage-purge", new RollbackResumeScenario()),
+            Map.entry("storage-scheduled", new RollbackResumeScenario()),
             Map.entry("storage-quarantine", new RollbackResumeScenario()));
 
     @Override

@@ -51,6 +51,11 @@ abstract class ServerScenarioTask : DefaultTask() {
     @get:Input
     abstract val scenarioParams: MapProperty<String, String>
 
+    /** Operator configuration installed before plugin enable, so scheduling tests use real startup. */
+    @get:Input
+    @get:Optional
+    abstract val traceConfig: Property<String>
+
     /** Distinct per task, so scenarios can run in parallel without fighting over a port. */
     @get:Input
     abstract val port: Property<Int>
@@ -86,6 +91,11 @@ abstract class ServerScenarioTask : DefaultTask() {
         val jar = ServerRuntime.resolveJar(spec, serverCacheDirectory.get().asFile, contact.get(), logger)
         val dir = runDirectory.get().asFile
         ServerRuntime.prepareRunDirectory(dir, port.get(), pluginJars.files, keepWorld = false)
+        if (traceConfig.isPresent) {
+            val config = dir.resolve("plugins/Trace/config.yml")
+            config.parentFile.mkdirs()
+            config.writeText(traceConfig.get())
+        }
 
         val run = ServerRuntime.run(
             command = ServerRuntime.command(

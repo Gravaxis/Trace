@@ -15,6 +15,8 @@ import in.gravaxis.trace.core.ring.MappedEventRing;
 import in.gravaxis.trace.core.time.TraceEpoch;
 import in.gravaxis.trace.storage.EventStore;
 import in.gravaxis.trace.storage.GapRecord;
+import in.gravaxis.trace.storage.MaintenancePolicy;
+import in.gravaxis.trace.storage.MaintenanceSchedule;
 import in.gravaxis.trace.storage.RecordBatch;
 import in.gravaxis.trace.storage.StoreException;
 import java.io.IOException;
@@ -48,6 +50,7 @@ public final class StoreConsumer implements Runnable {
     private final Logger logger;
     private final long forceIntervalMillis;
     private final long sealIntervalMillis;
+    private final MaintenanceSchedule maintenance;
 
     private final long[] buffer = new long[DRAIN_LIMIT * EventRecords.LONGS];
     private final RecordBatch batch = new RecordBatch(DRAIN_LIMIT);
@@ -76,6 +79,17 @@ public final class StoreConsumer implements Runnable {
             Logger logger,
             long forceIntervalMillis,
             long sealIntervalMillis) {
+        this(capture, journal, store, logger, forceIntervalMillis, sealIntervalMillis, MaintenancePolicy.defaults());
+    }
+
+    public StoreConsumer(
+            CaptureService capture,
+            JournalWriter journal,
+            EventStore store,
+            Logger logger,
+            long forceIntervalMillis,
+            long sealIntervalMillis,
+            MaintenancePolicy policy) {
         this.capture = capture;
         this.journal = journal;
         this.store = store;
@@ -85,6 +99,7 @@ public final class StoreConsumer implements Runnable {
         this.lastForceAt = System.currentTimeMillis();
         this.lastSealAt = System.currentTimeMillis();
         this.lastDropCheckAt = System.currentTimeMillis();
+        this.maintenance = new MaintenanceSchedule(store, policy, () -> !running, System.currentTimeMillis());
     }
 
     @Override
@@ -97,6 +112,7 @@ public final class StoreConsumer implements Runnable {
                 maybeSeal();
                 maybeRecordDrops();
                 serveRequests();
+                maintenance.tick(System.currentTimeMillis(), pendingRecords() > 0 || !requests.isEmpty());
                 if (drained == 0) {
                     LockSupport.parkNanos(IDLE_PARK_NANOS);
                 }
@@ -113,6 +129,14 @@ public final class StoreConsumer implements Runnable {
     /** Stops the loop after the current pass. */
     public void stop() {
         running = false;
+    }
+
+    public String maintenanceStatus() {
+        return maintenance.status();
+    }
+
+    public long maintenanceCompleted() {
+        return maintenance.completed();
     }
 
     /**

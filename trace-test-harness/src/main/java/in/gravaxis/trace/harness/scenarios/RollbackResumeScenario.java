@@ -150,6 +150,47 @@ public final class RollbackResumeScenario implements Scenario {
                     } else if (phase.startsWith("storage-")) {
                         Bukkit.getAsyncScheduler().runNow(context.plugin(), task -> {
                             try {
+                                if (phase.equals("storage-scheduled")) {
+                                    trace.call("sealForScheduledTest");
+                                    // A second real captured batch creates another input shard.
+                                    onEachRegion(context, world, areas, area -> {
+                                                for (int[] position : area.positions()) {
+                                                    Block block =
+                                                            world.getBlockAt(position[0], position[1], position[2]);
+                                                    block.setType(Material.STONE, false);
+                                                    HarnessPlayers.fireBlockBreak(block);
+                                                    block.setType(Material.AIR, false);
+                                                }
+                                            })
+                                            .thenCompose(ignored -> afterTicks(context, world, areas, 5L))
+                                            .thenRun(() -> Bukkit.getAsyncScheduler()
+                                                    .runNow(context.plugin(), next -> {
+                                                        try {
+                                                            String scheduled =
+                                                                    trace.call("scheduledMaintenanceForTest");
+                                                            result.detail("maintenance.scheduled", scheduled);
+                                                            result.require(
+                                                                    TracePluginBridge.counter(scheduled, "completed")
+                                                                            > 0,
+                                                                    "No scheduled pass completed");
+                                                            result.require(
+                                                                    TracePluginBridge.counter(scheduled, "rows") > 0,
+                                                                    "Scheduled pass rewrote no rows");
+                                                            result.require(
+                                                                    TracePluginBridge.counter(scheduled, "shards") == 1,
+                                                                    "Inputs were not merged");
+                                                        } catch (Exception e) {
+                                                            result.failure("Scheduled maintenance failed: " + e);
+                                                        }
+                                                        done.complete(null);
+                                                    }))
+                                            .exceptionally(error -> {
+                                                result.failure("Second batch failed: " + error);
+                                                done.complete(null);
+                                                return null;
+                                            });
+                                    return;
+                                }
                                 String action = phase.substring("storage-".length());
                                 String changed = trace.call("maintenanceForTest", action);
                                 result.detail("maintenance.result", changed);

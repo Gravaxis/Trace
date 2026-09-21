@@ -114,6 +114,13 @@ val quarantinePaper = registerScenario("quarantinePaper", "paper", "storage-quar
 val quarantineFolia = registerScenario("quarantineFolia", "folia", "storage-quarantine", 25605)
 tasks.register("storageMaintenanceTest") { dependsOn(purgePaper,purgeFolia,quarantinePaper,quarantineFolia) }
 
+val scheduledPaper = registerScenario("scheduledPaper", "paper", "storage-scheduled", 25606)
+val scheduledFolia = registerScenario("scheduledFolia", "folia", "storage-scheduled", 25607)
+listOf(scheduledPaper, scheduledFolia).forEach { task -> task.configure {
+  traceConfig.set("config-version: 1\nmaintenance-enabled: true\nmaintenance-interval: 1s\nmaintenance-budget: 5s\nretention-age: 0ms\n")
+} }
+tasks.register("scheduledMaintenanceTest") { dependsOn(scheduledPaper, scheduledFolia) }
+
 tasks.register("integrationTest") {
   group = "verification"
   description = "Breaks blocks, stores the history and rolls it back, on Paper and on Folia."
