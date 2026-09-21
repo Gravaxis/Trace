@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.core.record.EventRecordsPropertyTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-09-21T00:12:36.784Z" hostname="ISHWARS-PC" time="0.015">
+  <properties/>
+  <testcase name="states and the auxiliary field round-trip" classname="in.gravaxis.trace.core.record.EventRecordsPropertyTest" time="0.002"/>
+  <testcase name="a whole record round-trips, including the actor id split across two words" classname="in.gravaxis.trace.core.record.EventRecordsPropertyTest" time="0.007"/>
+  <testcase name="the format covers the whole vanilla world" classname="in.gravaxis.trace.core.record.EventRecordsPropertyTest" time="0.001"/>
+  <testcase name="a position round-trips for every coordinate the format claims to support" classname="in.gravaxis.trace.core.record.EventRecordsPropertyTest" time="0.002"/>
+  <testcase name="positions outside the format's range are rejected, never truncated" classname="in.gravaxis.trace.core.record.EventRecordsPropertyTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

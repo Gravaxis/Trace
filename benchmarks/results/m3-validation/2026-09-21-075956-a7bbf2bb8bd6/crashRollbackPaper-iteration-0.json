@@ -1,0 +1,24 @@
+{
+  "scenario": "rollback-crash-verify",
+  "status": "PASS",
+  "params": {},
+  "details": {
+    "server.brand": "Paper",
+    "server.minecraftVersion": "26.2",
+    "server.version": "26.2-126-c646faf (MC: 26.2)",
+    "server.regionised": "false",
+    "java.version": "25.0.4+7-LTS-189",
+    "heap.maxBytes": "1073741824",
+    "areas": "6",
+    "blocks": "240",
+    "crash.unfinished": "id=1 state=RUNNING applied=40 scanned=40",
+    "crash.compaction": "rewritten=280",
+    "crash.resumed": "op=1 state=DONE applied=200 already=40 mismatched=0 chunks=6 scanned=240",
+    "crash.checkpointReached": "true",
+    "world.verified": "true"
+  },
+  "metrics": [
+    {"name": "world.restored", "value": 240, "unit": "count"}
+  ],
+  "failures": []
+}

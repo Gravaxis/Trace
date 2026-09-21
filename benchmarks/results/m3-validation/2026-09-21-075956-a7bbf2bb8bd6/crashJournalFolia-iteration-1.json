@@ -1,0 +1,24 @@
+{
+  "scenario": "crash-journal-verify",
+  "status": "PASS",
+  "params": {},
+  "details": {
+    "server.brand": "Folia",
+    "server.minecraftVersion": "26.2",
+    "server.version": "26.2-7-14b7fee (MC: 26.2)",
+    "server.regionised": "true",
+    "java.version": "25.0.4+7-LTS-189",
+    "heap.maxBytes": "1073741824",
+    "crash.truthEvents": "83400",
+    "crash.storedPositions": "83400",
+    "crash.missing": "0",
+    "crash.gaps": "1789976678503-1789976679524:CRASH_WINDOW",
+    "crash.lossy": "false",
+    "crash.inconclusive": "the kill landed between ticks: nothing was lost, so the gap-coverage property was never exercised"
+  },
+  "metrics": [
+    {"name": "crash.truthEvents", "value": 83400, "unit": "count"},
+    {"name": "crash.missing", "value": 0, "unit": "count"}
+  ],
+  "failures": []
+}

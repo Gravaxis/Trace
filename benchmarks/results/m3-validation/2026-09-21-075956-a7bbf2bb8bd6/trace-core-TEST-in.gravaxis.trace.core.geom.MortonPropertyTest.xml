@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.core.geom.MortonPropertyTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-09-21T00:12:35.950Z" hostname="ISHWARS-PC" time="0.087">
+  <properties/>
+  <testcase name="a chunk key round-trips across the whole addressable world" classname="in.gravaxis.trace.core.geom.MortonPropertyTest" time="0.01"/>
+  <testcase name="the decomposition covers every chunk of the rectangle it was given" classname="in.gravaxis.trace.core.geom.MortonPropertyTest" time="0.051"/>
+  <testcase name="distinct chunks get distinct keys" classname="in.gravaxis.trace.core.geom.MortonPropertyTest" time="0.002"/>
+  <testcase name="a long thin region stays within the range budget, at the cost of coarseness" classname="in.gravaxis.trace.core.geom.MortonPropertyTest" time="0.007"/>
+  <testcase name="a single chunk decomposes to exactly one key" classname="in.gravaxis.trace.core.geom.MortonPropertyTest" time="0.009"/>
+  <testcase name="an empty or out-of-world rectangle is rejected rather than silently clamped" classname="in.gravaxis.trace.core.geom.MortonPropertyTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

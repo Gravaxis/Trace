@@ -1,0 +1,31 @@
+{
+  "scenario": "block-break-rollback",
+  "status": "PASS",
+  "params": {},
+  "details": {
+    "server.brand": "Folia",
+    "server.minecraftVersion": "26.2",
+    "server.version": "26.2-7-14b7fee (MC: 26.2)",
+    "server.regionised": "true",
+    "java.version": "25.0.4+7-LTS-189",
+    "heap.maxBytes": "1073741824",
+    "capture.path": "synthetic BlockBreakEvent/BlockPlaceEvent plus the world change, no client",
+    "areas": "2",
+    "blocks.broken": "24",
+    "blocks.placed": "12",
+    "history.startedAt": "1789977193463",
+    "counters.beforeRollback": "captured=46 published=36 rejectedUnchanged=10 unconfirmed=0 dropped=0 outOfRange=0 stored=36",
+    "rollback": "op=1 state=DONE applied=35 already=0 mismatched=1 chunks=2 scanned=36",
+    "world.threads": "{128,128=Folia Region Scheduler Thread #0, 0,0=Folia Region Scheduler Thread #1}",
+    "world.ownsTheOtherArea": "{128,128=false, 0,0=false}",
+    "world.verified": "true"
+  },
+  "metrics": [
+    {"name": "rollback.applied", "value": 35, "unit": "count"},
+    {"name": "rollback.mismatched", "value": 1, "unit": "count"},
+    {"name": "rollback.chunks", "value": 2, "unit": "count"},
+    {"name": "world.restored", "value": 23, "unit": "count"},
+    {"name": "world.cleared", "value": 12, "unit": "count"}
+  ],
+  "failures": []
+}

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" tests="22" skipped="0" failures="0" errors="0" timestamp="2026-09-21T07:52:14.631Z" hostname="ISHWARS-PC" time="5.861">
+  <properties/>
+  <testcase name="a checkpoint with no cursor records progress without promising more was finished" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.041"/>
+  <testcase name="purgeCoversHotAndSealedRowsAndReplayCannotResurrectThem()" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.102"/>
+  <testcase name="a scan visits every matching row exactly once, at any page size" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="2.51"/>
+  <testcase name="resuming a scan returns exactly the rows that were left" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.12"/>
+  <testcase name="rows outside the box are filtered even when the key cover is coarse" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.061"/>
+  <testcase name="quarantineAndRefusalGapAreAtomicAcrossFailureRetryAndReopen()" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.261"/>
+  <testcase name="rows written are readable after sealing, and the hot window is emptied" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.075"/>
+  <testcase name="incrementalCompactionPreservesEveryFieldAndStoredSuffixInBothDirections()" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="1.326"/>
+  <testcase name="compactionPreservesEveryFieldAndStoredSuffixInBothDirections()" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.265"/>
+  <testcase name="rows written are readable before anything is sealed" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.045"/>
+  <testcase name="a rollback that was interrupted is still there after a restart, with its cursor" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.061"/>
+  <testcase name="a cursor reports a position that matches the last row it returned" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.062"/>
+  <testcase name="retentionIsStrictlyBeforeCutoffAndDefersWithAnOpenReader()" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.128"/>
+  <testcase name="a second server opening the same data directory is refused, by name" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.032"/>
+  <testcase name="replaying an already-applied batch changes nothing" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.12"/>
+  <testcase name="blobReferencesSurviveReopenAndMergeThenOnlyUnreferencedPayloadsCollect()" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.177"/>
+  <testcase name="the scan order is exactly the one the plan asked for" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.065"/>
+  <testcase name="the batch at journal position zero is kept" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.087"/>
+  <testcase name="gaps are recorded and found by the window they overlap" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.035"/>
+  <testcase name="rows in the hot window and rows in shards come back as one ordered stream" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.103"/>
+  <testcase name="sealing twice is not an error and does not duplicate rows" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.083"/>
+  <testcase name="rows survive closing and reopening the store" classname="in.gravaxis.trace.storage.sqlite.SqliteEventStoreContractTest" time="0.08"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
