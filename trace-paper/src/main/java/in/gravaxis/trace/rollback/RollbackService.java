@@ -95,6 +95,13 @@ public final class RollbackService {
     /** Operations someone has asked to stop. Per operation, never a single shared flag. */
     private final Set<Long> cancelled = ConcurrentHashMap.newKeySet();
 
+    private java.util.function.LongConsumer checkpointObserver = id -> {};
+
+    /** Internal harness seam, invoked only after a real checkpoint. */
+    public void checkpointObserver(java.util.function.LongConsumer observer) {
+        checkpointObserver = observer;
+    }
+
     public RollbackService(
             Plugin plugin,
             EventStore store,
@@ -179,6 +186,13 @@ public final class RollbackService {
         RollbackSummary refusal = refusalForGaps(operation.fromMillis(), operation.toMillis());
         if (refusal != null) {
             return refusal;
+        }
+        if (!operation.runId().equals(runId)) {
+            store.rewindOperation(operationId, runId);
+            RollbackOperation rewound = store.operation(operationId);
+            if (rewound == null)
+                throw new StoreException(StoreException.Reason.CORRUPT, "Operation disappeared during resume");
+            operation = rewound;
         }
         return run(world, operation, operation.progress());
     }
@@ -294,6 +308,7 @@ public final class RollbackService {
             throws StoreException {
         CursorPosition safe = summary.contendedCount() > 0 ? null : position;
         store.checkpointOperation(id, safe, carried.plus(summary.progress()));
+        checkpointObserver.accept(id);
     }
 
     /**

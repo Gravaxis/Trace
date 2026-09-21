@@ -9,6 +9,7 @@
 package in.gravaxis.trace.runtime;
 
 import in.gravaxis.trace.capture.BlockCaptureListener;
+import in.gravaxis.trace.core.capture.CaptureLoss;
 import in.gravaxis.trace.core.capture.CaptureService;
 import in.gravaxis.trace.core.journal.JournalFrames;
 import in.gravaxis.trace.core.journal.JournalReader;
@@ -138,6 +139,18 @@ public final class TraceRuntime implements AutoCloseable {
                     + floor + "; refusing to start rather than discard everything this run captures");
         }
         RecoveryReport recovery = recover(logger, journalDirectory, ringDirectory, store, journal);
+        Path lossFile = ringDirectory.resolve("capture.loss");
+        if (Files.exists(lossFile)) {
+            try (CaptureLoss losses = CaptureLoss.open(lossFile)) {
+                if (losses.toMillis() > 0)
+                    store.recordGap(new GapRecord(
+                            losses.fromMillis(),
+                            losses.toMillis(),
+                            GapRecord.Reason.OVERFLOW,
+                            losses.count(),
+                            "recovered persistent capture-loss bounds"));
+            }
+        }
 
         // Read before the consumer thread starts, while the store still has one user. An operation
         // left running by the last process is a world that is neither the old one nor the new one,
@@ -382,6 +395,8 @@ public final class TraceRuntime implements AutoCloseable {
                         capture.dropped()));
         lines.add("queue: %d records waiting, %d frames written, journal forced to %d"
                 .formatted(consumer.pendingRecords(), consumer.framesWritten(), consumer.forcedLsn()));
+        lines.add("capture capacity: " + capture.slotsExhausted() + " threads rejected; " + capture.droppedNoSlot()
+                + " records dropped without a slot; reclamation and spill are not implemented");
         lines.add("store: %d rows hot, %d rows in %d shards, %d bytes, %d gaps"
                 .formatted(
                         stats.hotRows(),

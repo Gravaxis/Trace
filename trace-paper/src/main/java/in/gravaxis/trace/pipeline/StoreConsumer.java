@@ -126,7 +126,13 @@ public final class StoreConsumer implements Runnable {
         requests.add(request);
         try {
             request.done.get(timeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (Exception e) {
+        } catch (java.util.concurrent.ExecutionException e) {
+            if (e.getCause() instanceof StoreException failure) throw failure;
+            throw new StoreException(StoreException.Reason.INTERNAL, "Storage flush failed", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new StoreException(StoreException.Reason.CONTENDED, "Storage flush interrupted", e);
+        } catch (java.util.concurrent.TimeoutException e) {
             throw new StoreException(
                     StoreException.Reason.CONTENDED,
                     "The storage consumer did not finish flushing within " + timeoutMillis + "ms",
@@ -232,19 +238,19 @@ public final class StoreConsumer implements Runnable {
         if (now - lastDropCheckAt < forceIntervalMillis) {
             return;
         }
-        long dropped = capture.dropped();
+        long dropped = capture.lossCount();
         long unreported = dropped - reportedDrops;
         if (unreported <= 0) {
             lastDropCheckAt = now;
             return;
         }
         boolean recorded = recordGap(
-                lastDropCheckAt,
-                now,
+                capture.lossFromMillis(),
+                Math.max(now, capture.lossToMillis()),
                 GapRecord.Reason.OVERFLOW,
                 unreported,
-                unreported + " records were dropped by capture: the ring was full, or the slot clock could not"
-                        + " order them");
+                unreported
+                        + " records rejected by capture; conservative persisted loss window includes producer exhaustion, ring/clock overflow and out-of-range positions");
         if (recorded) {
             reportedDrops = dropped;
             lastDropCheckAt = now;

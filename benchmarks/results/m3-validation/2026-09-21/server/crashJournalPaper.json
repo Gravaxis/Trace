@@ -1,0 +1,11 @@
+{
+  "task": "crashJournalPaper",
+  "server": "paper 26.2 build 126",
+  "seed": 20260920,
+  "iterations": 3,
+  "killDelayRangeMs": [1500, 6000],
+  "outcomes": [{"iteration": 0, "killDelayMs": 2973, "verified": true, "lossy": true, "recordedEvents": 47399, "lostEvents": 1199}, {"iteration": 1, "killDelayMs": 3024, "verified": true, "lossy": false, "recordedEvents": 47400, "lostEvents": 0}, {"iteration": 2, "killDelayMs": 2868, "verified": true, "lossy": true, "recordedEvents": 45212, "lostEvents": 812}],
+  "lossyIterations": 2,
+  "minLossyIterations": 1,
+  "failures": 0
+}

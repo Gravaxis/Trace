@@ -55,6 +55,11 @@ abstract class CrashInjectionTask : DefaultTask() {
     @get:Input
     abstract val verifyScenario: Property<String>
 
+    /** Optional clean setup boot to persist the world before a rollback crash. */
+    @get:Input
+    @get:Optional
+    abstract val prepareScenario: Property<String>
+
     @get:Input
     abstract val scenarioParams: MapProperty<String, String>
 
@@ -126,6 +131,19 @@ abstract class CrashInjectionTask : DefaultTask() {
             val delay = minDelay + random.nextLong(maxOf(1L, maxDelay - minDelay + 1))
             ServerRuntime.prepareRunDirectory(dir, port.get(), pluginJars.files, keepWorld = false)
 
+            if (prepareScenario.isPresent) {
+                val prepared = ServerRuntime.run(
+                    command = ServerRuntime.command(javaExecutable.get(), jvmArgs.get(), jar, prepareScenario.get(), scenarioParams.get()),
+                    directory = dir, logFile = dir.resolve("server-prepare.log"), logger = logger, timeoutSeconds = timeout,
+                )
+                val (passed, text) = ServerRuntime.readResult(dir.resolve("harness-result.json"))
+                if (!passed || prepared.exitCode != 0) {
+                    failures += "iteration $iteration: preparation failed: $text"
+                    return@repeat
+                }
+                ServerRuntime.prepareRunDirectory(dir, port.get(), pluginJars.files, keepWorld = true)
+            }
+
             val writeRun = ServerRuntime.run(
                 command = ServerRuntime.command(
                     javaExecutable.get(), jvmArgs.get(), jar, writeScenario.get(), scenarioParams.get()
@@ -172,7 +190,7 @@ abstract class CrashInjectionTask : DefaultTask() {
             } else if (inconclusive != null) {
                 logger.lifecycle("Iteration $iteration: killed after ${delay}ms, inconclusive - $inconclusive")
             } else {
-                logger.lifecycle("Iteration $iteration: killed after ${delay}ms, restart verified, lost events covered")
+                logger.lifecycle("Iteration $iteration: killed after ${delay}ms, restart scenario verified")
             }
         }
 

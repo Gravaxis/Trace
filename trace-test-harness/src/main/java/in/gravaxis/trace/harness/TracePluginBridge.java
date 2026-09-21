@@ -53,6 +53,9 @@ public final class TracePluginBridge {
             put(optional, plugin, "resumeRollback", long.class);
             put(optional, plugin, "cancelRollback", long.class);
             put(optional, plugin, "unfinishedRollbacks");
+            put(optional, plugin, "armRollbackCrash");
+            put(optional, plugin, "compactStorage");
+            put(optional, plugin, "maintenanceForTest", String.class);
             put(optional, plugin, "gapsBetween", long.class, long.class);
             put(
                     optional,

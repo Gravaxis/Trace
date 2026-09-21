@@ -71,6 +71,12 @@ earlier run cannot still be going.
 
 ## What is proven, and what is not
 
+**M3 update:** ADR-0020 records a passing real-process-crash scenario on Paper and
+Folia, including compaction before resume and world verification. It also narrows
+the seek claim above: only same-process resume trusts its cursor. Cross-process
+resume revisits the stored window because Minecraft saves and Trace checkpoints
+are not atomic. The original proof ledger below describes the M2 boundary.
+
 Proven, on Paper and on Folia, by the `rollback-resume` scenario: a rollback cancelled mid-flight
 stops at a chunk boundary having restored some but not all of the 240 positions, is listed as
 unfinished, and a resume restores exactly the rest and ends `DONE`. The world is checked block by

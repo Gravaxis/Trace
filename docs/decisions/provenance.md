@@ -134,8 +134,6 @@ README, the documentation site or any comparison until that task is committed an
 of what is counted on each side: the two databases hold different data, and a ratio between them
 licenses far less than it appears to.
 
-## How to add to this file
-
 ### SQLite transaction scope checked for M3 (2026-09-21)
 
 Read SQLite's official [WAL documentation](https://www.sqlite.org/wal.html) and
@@ -143,6 +141,27 @@ Read SQLite's official [WAL documentation](https://www.sqlite.org/wal.html) and
 in WAL mode have per-database atomicity, not atomicity across the set. The current
 store's cross-database publication comments therefore cannot justify crash safety.
 The M3 execution plan requires a single-database hot/manifest transaction boundary.
+
+### M3 pinned API verification (2026-09-21)
+
+Used `javap` on the pinned Paper and Folia API jars for Bukkit's world lookup,
+region/async scheduler accessors, RegionScheduler.execute/runDelayed and
+AsyncScheduler.runNow/runDelayed. Paper's World chunk-loading signatures were
+also inspected. Used `javap` on sqlite-jdbc 3.49.1.0 for
+SQLiteErrorCode.SQLITE_CONSTRAINT and its public code field. No forbidden project
+source or source DDL was read.
+
+### SPIKE-2 repeatable baseline (2026-09-21)
+
+The committed measurement task at e643f099dcdc has now produced the aggregate-only
+report in `benchmarks/results/density/2026-09-21-e643f099dcdc/density.json`.
+It uses schema name/type/ownership metadata internally (no DDL), row counts and
+grouped dbstat page totals; it never selects player rows. Report-local aliases
+replace arbitrary object names. The source database is not committed.
+The Trace fixtures in this baseline use the pre-M3 implementation; ADR-0018 and
+`benchmarks/STORAGE-DENSITY.md` explain counted components and comparison limits.
+
+## How to add to this file
 
 One row or bullet per source: what you read, where, and when. If a fact is load-bearing — a version
 pin, an API contract, a licence claim — cite the primary source, not a summary of it.

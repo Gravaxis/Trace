@@ -29,6 +29,39 @@ import org.junit.jupiter.api.io.TempDir;
  * to test a decision this central.
  */
 class CaptureServiceTest {
+    @Test
+    void excessThreadsNeverShareAnSpscRingAndLossBoundsSurviveReopen() throws Exception {
+        int threads = CaptureService.MAX_SLOTS + 8;
+        var start = new java.util.concurrent.CountDownLatch(1);
+        List<Thread> workers = new ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            final int x = i;
+            Thread worker = new Thread(() -> {
+                try {
+                    start.await();
+                } catch (InterruptedException e) {
+                    throw new AssertionError(e);
+                }
+                capture.captureBlockChange(WORLD, x, Y, 0, STONE, ACTOR, CAUSE, KIND);
+                capture.confirmStaged((w, bx, by, bz) -> AIR);
+            });
+            workers.add(worker);
+            worker.start();
+        }
+        long before = System.currentTimeMillis();
+        start.countDown();
+        for (Thread worker : workers) worker.join();
+        assertThat(capture.rings()).hasSize(CaptureService.MAX_SLOTS);
+        assertThat(capture.slotsExhausted()).isEqualTo(8);
+        assertThat(capture.droppedNoSlot()).isEqualTo(8);
+        assertThat(capture.published()).isEqualTo(CaptureService.MAX_SLOTS);
+        assertThat(drainAll()).hasSize(CaptureService.MAX_SLOTS);
+        try (var losses = CaptureLoss.open(directory.resolve("capture.loss"))) {
+            assertThat(losses.count()).isEqualTo(8);
+            assertThat(losses.fromMillis()).isLessThanOrEqualTo(before);
+            assertThat(losses.toMillis()).isGreaterThanOrEqualTo(before);
+        }
+    }
 
     private static final int WORLD = 1;
     private static final int STONE = 11;

@@ -1,5 +1,11 @@
 # M3 storage engine: reviewed design proposal
 
+**Execution update:** see `m3-execution-plan.md` and ADR-0016 through ADR-0020.
+The current task includes opaque blob storage and producer-exhaustion containment;
+the deferrals below are historical proposal choices, not the implemented scope.
+Single-database WAL publication also replaces this proposal's inherited attached
+database assumption. Validation limits remain explicit in the execution ledger.
+
 * **Status:** proposal, reviewed, **not a decision**. No ADR has been written from it and no code
   exists. Each subsystem gets its ADR (0016 onwards) as it lands, not before.
 * **Date:** 2026-09-21

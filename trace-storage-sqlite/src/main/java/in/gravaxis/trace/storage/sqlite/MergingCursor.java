@@ -41,6 +41,7 @@ final class MergingCursor implements MutationCursor {
     private final List<AutoCloseable> owned;
 
     private boolean started;
+    private boolean closed;
     private @Nullable CursorPosition position;
 
     MergingCursor(ScanPlan plan, List<KeysetRowSource> sources, List<AutoCloseable> owned) {
@@ -136,6 +137,8 @@ final class MergingCursor implements MutationCursor {
 
     @Override
     public void close() throws StoreException {
+        if (closed) return;
+        closed = true;
         List<Exception> failures = new ArrayList<>();
         for (KeysetRowSource source : sources) {
             try {

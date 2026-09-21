@@ -1,0 +1,11 @@
+{
+  "baseCommit": "0ded6eca428efb0b12c44b52395c6207de51743f",
+  "dirty": true,
+  "source": "Implementation in the same commit as this report",
+  "os": "Microsoft Windows NT 10.0.19045.0",
+  "cpu": "AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD",
+  "java": "25.0.4+7-LTS-189",
+  "serverHeap": "1g",
+  "jmhHeap": "JVM default; VM options retained in raw JMH JSON",
+  "caveat": "No servers or private density walk overlapped JMH; unit tests ran in the same Gradle invocation. Not a controlled latency comparison."
+}

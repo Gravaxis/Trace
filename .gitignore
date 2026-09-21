@@ -1,5 +1,6 @@
 # Gradle. Anchored so that a source package named "build" is not swallowed.
 .gradle/
+.kotlin/
 /build/
 /*/build/
 /*/*/build/

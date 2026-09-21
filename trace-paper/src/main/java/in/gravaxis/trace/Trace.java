@@ -166,6 +166,57 @@ public final class Trace extends JavaPlugin implements TraceApi {
         }
     }
 
+    @ApiStatus.Internal
+    public String compactStorage() throws Exception {
+        TraceRuntime current = runtime;
+        if (current == null) return "refused";
+        current.consumer().flushAndSeal(30000);
+        return "rewritten=" + current.store().compact();
+    }
+
+    @ApiStatus.Internal
+    public String maintenanceForTest(String action) throws Exception {
+        TraceRuntime current = runtime;
+        if (current == null || !System.getProperty("trace.harness.scenario", "").startsWith("storage-"))
+            return "refused";
+        current.consumer().flushAndSeal(30000);
+        int verified = current.store().verify().verified();
+        long before = current.store().stats().sealedRows();
+        if (action.equals("purge"))
+            current.store()
+                    .purgeActor(
+                            current.actors().idOf(java.util.UUID.fromString("00000000-0000-4000-8000-000000000001")),
+                            0,
+                            Long.MAX_VALUE);
+        else if (action.equals("quarantine")) current.store().quarantineShard(1, "harness quarantine");
+        else throw new IllegalArgumentException("Unknown maintenance action");
+        return "verified=" + verified + " changed="
+                + (before - current.store().stats().sealedRows()) + " gaps="
+                + current.store().stats().gapCount();
+    }
+
+    @ApiStatus.Internal
+    public String armRollbackCrash() {
+        TraceRuntime current = runtime;
+        if (current == null || !"rollback-crash-write".equals(System.getProperty("trace.harness.scenario")))
+            return "refused";
+        current.rollback().checkpointObserver(id -> {
+            try {
+                RollbackOperation operation = current.store().operation(id);
+                if (operation == null || operation.progress().applied() <= 0 || operation.cursor() == null)
+                    throw new IllegalStateException("Crash hook did not reach an applied checkpoint");
+                // Let the consumer journal rollback's own writes before the kill; the stored
+                // operation window ends before these writes, and must remain unchanged on resume.
+                Thread.sleep(1000);
+                getSLF4JLogger().info("[TRACE-HARNESS] ready rollback-checkpoint id={}", id);
+                while (true) Thread.sleep(1000);
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        return "armed";
+    }
+
     /**
      * Asks a running rollback to stop at its next chunk boundary.
      *

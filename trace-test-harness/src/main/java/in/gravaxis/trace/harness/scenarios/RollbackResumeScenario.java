@@ -77,6 +77,54 @@ public final class RollbackResumeScenario implements Scenario {
                 .map(area -> world.getChunkAtAsync(area.chunkX(), area.chunkZ(), true))
                 .toArray(CompletableFuture<?>[]::new);
 
+        String phase = System.getProperty("trace.harness.scenario", "rollback-resume");
+        if (phase.equals("rollback-crash-write") || phase.equals("rollback-crash-verify")) {
+            CompletableFuture.allOf(loaded)
+                    .thenRun(() -> Bukkit.getAsyncScheduler().runNow(context.plugin(), task -> {
+                        try {
+                            if (phase.equals("rollback-crash-write")) {
+                                result.require(
+                                        trace.call("armRollbackCrash").equals("armed"), "Crash hook was not armed");
+                                String outcome = trace.rollback(world.getName(), CENTRE, y, CENTRE, RADIUS, 3_600_000);
+                                result.failure("Rollback returned instead of reaching the crash hook: " + outcome);
+                                done.complete(null);
+                            } else {
+                                String unfinished = trace.call("unfinishedRollbacks");
+                                result.detail("crash.unfinished", unfinished);
+                                result.require(
+                                        unfinished.contains("id=1") && unfinished.contains("RUNNING"),
+                                        "No killed running operation: " + unfinished);
+                                long checkpointed = TracePluginBridge.counter(unfinished, "applied");
+                                result.require(
+                                        checkpointed > 0 && checkpointed < areas.size() * BLOCKS_PER_AREA,
+                                        "Kill did not interrupt partial work: " + unfinished);
+                                String compacted = trace.call("compactStorage");
+                                result.detail("crash.compaction", compacted);
+                                result.require(
+                                        TracePluginBridge.counter(compacted, "rewritten") > 0,
+                                        "Compaction branch was not exercised");
+                                String resumed = trace.call("resumeRollback", 1L);
+                                result.detail("crash.resumed", resumed);
+                                result.require(
+                                        resumed.contains("state=DONE"), "Crash resume did not finish: " + resumed);
+                                result.require(
+                                        TracePluginBridge.counter(resumed, "applied") > 0, "Resume applied nothing");
+                                result.detail("crash.checkpointReached", true);
+                                verifyWorld(context, world, areas, done);
+                            }
+                        } catch (Exception e) {
+                            result.failure("Crash resume scenario failed: " + e);
+                            done.complete(null);
+                        }
+                    }))
+                    .exceptionally(t -> {
+                        result.failure("Chunk load failed: " + t);
+                        done.complete(null);
+                        return null;
+                    });
+            return done;
+        }
+
         CompletableFuture.allOf(loaded)
                 .thenCompose(ignored -> onEachRegion(context, world, areas, area -> {
                     for (int[] position : area.positions()) {
@@ -95,8 +143,54 @@ public final class RollbackResumeScenario implements Scenario {
                 // an earlier version of this scenario rolled back 8 events out of 240 and blamed
                 // the rollback.
                 .thenCompose(ignored -> afterTicks(context, world, areas, 5L))
-                .thenRun(() -> Bukkit.getAsyncScheduler()
-                        .runNow(context.plugin(), task -> interruptAndResume(context, trace, world, areas, y, done)))
+                .thenRun(() -> {
+                    if (phase.equals("rollback-crash-prepare")) {
+                        result.detail("crash.prepared", true);
+                        done.complete(null); // Normal server shutdown saves the broken world and history.
+                    } else if (phase.startsWith("storage-")) {
+                        Bukkit.getAsyncScheduler().runNow(context.plugin(), task -> {
+                            try {
+                                String action = phase.substring("storage-".length());
+                                String changed = trace.call("maintenanceForTest", action);
+                                result.detail("maintenance.result", changed);
+                                result.require(
+                                        TracePluginBridge.counter(changed, "verified") > 0,
+                                        "Healthy verify branch not reached");
+                                result.require(
+                                        TracePluginBridge.counter(changed, "changed") > 0,
+                                        "Maintenance changed no history");
+                                result.require(
+                                        TracePluginBridge.counter(changed, "gaps") > 0,
+                                        "Maintenance left no refusal gap");
+                                String refusal = trace.rollback(world.getName(), CENTRE, y, CENTRE, RADIUS, 120000);
+                                result.detail("maintenance.rollback", refusal);
+                                result.require(refusal.startsWith("refused"), "Rollback did not refuse: " + refusal);
+                                result.require(
+                                        refusal.contains(action.equals("purge") ? "PURGED" : "QUARANTINE"),
+                                        "Wrong refusal reason: " + refusal);
+                                onEachRegion(context, world, areas, area -> {
+                                            for (int[] p : area.positions())
+                                                result.require(
+                                                        world.getType(p[0], p[1], p[2]) == Material.AIR,
+                                                        "Refused rollback changed the world");
+                                        })
+                                        .whenComplete((ignored, error) -> {
+                                            if (error != null)
+                                                result.failure("Could not verify refused world: " + error);
+                                            else result.detail("maintenance.worldUnchanged", true);
+                                            done.complete(null);
+                                        });
+                            } catch (Exception e) {
+                                result.failure("Maintenance scenario failed: " + e);
+                                done.complete(null);
+                            }
+                        });
+                    } else
+                        Bukkit.getAsyncScheduler()
+                                .runNow(
+                                        context.plugin(),
+                                        task -> interruptAndResume(context, trace, world, areas, y, done));
+                })
                 .exceptionally(t -> {
                     result.failure("Could not set the scenario up: " + t);
                     done.complete(null);

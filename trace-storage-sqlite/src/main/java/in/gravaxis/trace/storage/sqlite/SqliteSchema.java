@@ -30,7 +30,7 @@ import java.sql.Statement;
 final class SqliteSchema {
 
     /** Bumped when the on-disk format changes in a way a previous build cannot read. */
-    static final int FORMAT_VERSION = 2;
+    static final int FORMAT_VERSION = 3;
 
     private SqliteSchema() {}
 
@@ -69,6 +69,11 @@ final class SqliteSchema {
 
     static void createManifest(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE IF NOT EXISTS blob_bad(id TEXT PRIMARY KEY) WITHOUT ROWID");
+            statement.execute(
+                    "CREATE TABLE IF NOT EXISTS blob(id TEXT PRIMARY KEY, version INTEGER NOT NULL, payload BLOB NOT NULL) WITHOUT ROWID");
+            statement.execute(
+                    "CREATE TABLE IF NOT EXISTS blob_ref(w INTEGER NOT NULL,c INTEGER NOT NULL,ts INTEGER NOT NULL,seq INTEGER NOT NULL,actor INTEGER NOT NULL,blob_id TEXT NOT NULL REFERENCES blob(id),PRIMARY KEY(w,c,ts,seq)) WITHOUT ROWID");
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS meta(
                       k TEXT PRIMARY KEY,
@@ -121,15 +126,19 @@ final class SqliteSchema {
                       started_at INTEGER NOT NULL,
                       updated_at INTEGER NOT NULL)""");
             statement.execute("CREATE INDEX IF NOT EXISTS rollback_op_state ON rollback_op(state, id)");
+            statement.execute("CREATE TABLE IF NOT EXISTS shard_digest(id INTEGER PRIMARY KEY, digest TEXT NOT NULL)");
+            statement.execute(
+                    "CREATE TABLE IF NOT EXISTS maintenance_audit(id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, shard_id INTEGER, affected INTEGER NOT NULL, created_at INTEGER NOT NULL)");
+            statement.execute(
+                    "CREATE TABLE IF NOT EXISTS exclusion(id INTEGER PRIMARY KEY AUTOINCREMENT, actor INTEGER, from_ts INTEGER NOT NULL, to_ts INTEGER NOT NULL)");
         }
     }
 
     /**
      * The hot window: a heap table, deliberately without an index.
      *
-     * <p>Attached to the manifest connection so that publishing a shard and forgetting the rows it
-     * came from happen in one transaction. SQLite commits across attached databases atomically,
-     * which is the only reason the seal has no window where a row exists in both places.
+     * <p>Lives in the manifest database so publication and hot-row deletion share one WAL commit.
+     * Attached WAL databases do not provide atomic commit across the set.
      */
     static void createHot(Connection connection, String schema) throws SQLException {
         try (Statement statement = connection.createStatement()) {

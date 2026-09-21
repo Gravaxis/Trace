@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.bench.ExactAllocationTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-21T00:33:58.640Z" hostname="ISHWARS-PC" time="0.457">
+  <properties/>
+  <testcase name="a tick of real changes, packed and written to the ring, allocates nothing at all" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.323"/>
+  <testcase name="the counter itself can see an allocation, so a zero above means something" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.019"/>
+  <testcase name="a tick of events that changed nothing allocates nothing at all" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.092"/>
+  <system-out><![CDATA[path=publishing windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=rejecting windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

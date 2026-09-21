@@ -154,6 +154,8 @@ class ExactAllocationTest {
     private long[] lastWindows = new long[0];
 
     private void assertZeroBytes(long cleanest, String path) {
+        // Outside the measured windows: retain the actual samples in the committed test report.
+        System.out.printf("path=%s windowBytes=%s quietestBytes=%d%n", path, Arrays.toString(lastWindows), cleanest);
         assertThat(cleanest)
                 .as(
                         "%s: quietest of %d windows of %,d ticks of %d records (all windows: %s)",

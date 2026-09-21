@@ -8,7 +8,7 @@ and an unmet item is reported as unmet rather than carried quietly.
 | M0 | Skeleton: modules, build, licences, a plugin that loads on Paper and Folia | **done** |
 | M1 | Benchmark and crash harness — built *before* any feature | **done** |
 | M2 | Walking skeleton: one event type captured with zero allocation, journalled, sealed into a shard, queried back, rolled back | **done** |
-| M3 | Storage engine: sharding, sealing, compaction, manifest, dictionaries, blobs, retention, purge, verify, quarantine | planned |
+| M3 | Storage engine: sharding, sealing, compaction, manifest, dictionaries, blobs, retention, purge, verify, quarantine | **in progress** |
 | M4 | Full capture: every kind and cause, block entities, entities, containers, sessions | planned |
 | M5 | Mass edits: WorldEdit and FAWE hooks, section-diff patches, densification | planned |
 | M6 | Rollback engine complete: streaming, chunk batching, adaptive budget, preview, resume, undo, relight | planned |
@@ -108,9 +108,10 @@ only because the other two iterations did lose something.
   to drop because a ring was full or the clock could not order them. Both were silent until
   2026-09-20; the first even logged that the records were safe in the ring when they were already
   gone.
-* Beyond 32 concurrent capture threads, records can be overwritten with no drop counted and so no
-  gap at all. That is a known defect with no fix yet, recorded in
-  [ADR-0012](docs/decisions/0012-capture-transport.md).
+* At M2, excess capture threads could overwrite a shared slot without a gap. M3 contains this
+  with counted rejection and persistent conservative loss bounds; see
+  [ADR-0019](docs/decisions/0019-producer-exhaustion-containment.md). Reclamation/spill and an
+  actual killed-process exhaustion test remain unestablished.
 
 **An interrupted rollback resumes.**
 A rollback is now a durable operation: recorded before the first block is touched, checkpointed at
@@ -122,8 +123,9 @@ and every position is `STONE` again when the world is read back block by block. 
 the two runs depends on when the cancellation lands and is not asserted or published. See
 [ADR-0015](docs/decisions/0015-rollback-operations-and-resume.md).
 
-*Not established:* resuming after a real crash, as opposed to a cancellation, is not covered by a
-test. Nor is the cost of checkpointing, which is measured nowhere and claimed nowhere. A chunk whose
+*M3 update:* a real killed-process resume now passes on both pinned platforms, including compaction
+before resume and a block-by-block world check; see [ADR-0020](docs/decisions/0020-crash-resume-world-persistence.md).
+The cost of checkpointing is **not measured**. A chunk whose
 region is too busy to accept the work is counted and left for a resume, and that path has no test
 either: it was also where a review found a rollback writing blocks the history never named, because
 a task the wait had given up on was still holding the fold's arrays.
@@ -148,6 +150,48 @@ silent:
   lock;
 * and the gate said "zero allocation" about a hand-written stand-in for the encoder.
 
+## M3 implementation and remaining proof
+
+The file-level plan and pre-implementation self-attack are in
+[m3-execution-plan.md](docs/design/m3-execution-plan.md). ADR-0016 through ADR-0020
+record implemented decisions and deviations from that plan.
+
+* **Storage publication:** format 3 moves hot rows into manifest.db, removing the false assumption
+  that WAL commits across attached databases are atomic together. Legacy hot rows migrate once;
+  unknown future formats are rejected before schema mutation. Compaction retains absolute event
+  identities, pins reader snapshots, and retires old files after readers release them.
+* **Retention/purge:** explicit cutoff and actor/time APIs rewrite sealed and hot history, remove
+  blob references, publish refusal gaps and audit metadata, and persist replay exclusions.
+  These are history removal, not identity erasure or secure deletion.
+* **Verification/quarantine:** re-read seal digests, structural checks and content checks detect
+  damaged history; quarantine and its refusal gap commit together. Legacy shards lacking trusted
+  digests remain unverified. Blob corruption is checked separately.
+* **Opaque blobs:** versioned content identities, durable payload/attachment operations, stable
+  lookup across compaction, and explicit unreferenced collection. Capture-side atomic event/blob
+  journalling and Minecraft payload interpretation remain M4 work.
+* **Proof:** storage tests compare complete records and scan suffixes, inject valid-SQL corruption,
+  fail quarantine publication, kill child JVMs around rewrite publication and blob attachment,
+  and reopen stores. Serial Paper/Folia tests cover integration, cancellation resume, real-crash
+  resume, journal loss coverage, and purge/quarantine refusal without world mutation.
+* **SPIKE-2:** committed aggregate-only dbstat tooling and reports are under
+  [benchmarks/results/density](benchmarks/results/density). The same reader counts both sides;
+  [STORAGE-DENSITY.md](benchmarks/STORAGE-DENSITY.md) states denominators and exclusions. Different
+  data and semantics do not establish production savings, a migration ratio, or logger superiority.
+
+**Not established / not complete:** automatic maintenance scheduling and configuration, bounded
+maintenance budgets/cancellation, migration interrupted mid-transaction, large-data maintenance
+memory/latency gates, and power-loss durability. The plan's additive multiset accumulator and shared
+storage-contract expansion are not implemented; SQLite-specific complete-field tests are the current
+oracle. Maintenance holds the writer monitor; its effect on capture lag is **not measured**.
+StoreStats is not total physical disk accounting; use the density task's explicit categories.
+Purge leaves dictionaries, journals, legacy hot.db, quarantined files, backups and filesystem free
+space outside its erasure scope. Blob storage does not prove container rollback fidelity.
+
+M3 absorbs the real-crash resume debt because compaction must preserve resumability, and contains
+producer exhaustion because silent overwrite would invalidate storage preservation claims. Full
+transport reclamation/spill remains open. The contended-chunk apply path remains explicitly untested;
+M3 does not change its scheduling protocol. M4 has not started, and M3 is not declared done.
+
 ## Open questions carried forward
 
 Tracked in the ADRs rather than here, but the ones that shape upcoming work:
@@ -162,16 +206,11 @@ Tracked in the ADRs rather than here, but the ones that shape upcoming work:
   lower bound, journal frame integrity, and the fence that drains and journals before a rollback
   plans. The fifth, block-entity capture on region threads, is M4 work and until then a rollback
   says plainly that container contents were not captured in this build.
-* **M2** (open) — a rollback interrupted by a real crash, rather than by a cancellation, is not
-  covered by a test, and neither is the cost of checkpointing. Both are named in
-  [ADR-0015](docs/decisions/0015-rollback-operations-and-resume.md) rather than left to be
-  discovered.
-* **M3** (unblocked) — SPIKE-2 has its CoreProtect database: the owner supplied a real 12.35 GB one
-  on 2026-09-21, and a first observation of its density, the method, and the privacy and clean-room
-  reasoning are in [provenance.md](docs/decisions/provenance.md). What is still missing is the part
-  that matters: a committed, repeatable measurement task. Until that exists and its output is under
-  `benchmarks/results/`, no storage-density figure may be published, including the one already
-  observed.
+* **M2** (partly resolved in M3) — real-crash resume now has a passing gate; checkpoint cost remains
+  **not measured**, and contended-chunk apply remains untested. See ADR-0015 and ADR-0020.
+* **M3** — SPIKE-2 now has a committed repeatable measurement task and aggregate baseline report.
+  The original hand observation is not independent evidence. Private input is rerunnable by its
+  holder, not reproducible by someone who lacks it; no source rows or database files are committed.
 * **M9** — the CoreProtect compatibility bridge needs classes in the `net.coreprotect` package, and
   parts of that API's wire format are undocumented. Scope and legal review pending.
 * **Positioning** — the owner has identified Oasis and supplied an analysis

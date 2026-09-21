@@ -37,7 +37,11 @@ public record GapRecord(long fromMillis, long toMillis, Reason reason, long drop
         /** A shard failed verification and was quarantined, so its window is no longer readable. */
         QUARANTINE(3),
         /** Capture was switched off, or the plugin was not loaded. */
-        NOT_CAPTURED(4);
+        NOT_CAPTURED(4),
+        /** History was deliberately expired by retention. */
+        EXPIRED(5),
+        /** History was deliberately purged. */
+        PURGED(6);
 
         private final int id;
 

@@ -84,7 +84,8 @@ the same transaction as the rows. Restart then:
 4. replay ring and spill contents newer than each slot's recovered clock floor;
 5. reset the rings, seed the clocks, and, if the shutdown was unclean or ring contents cannot be
    trusted, write the `CRASH_WINDOW` gap;
-6. resume any operation left running (ADR-0015).
+6. report operations left running for explicit operator resume (ADR-0015 and
+   ADR-0020); do not mutate the world automatically at startup.
 
 Every step is idempotent, so a crash during recovery is just another restart.
 

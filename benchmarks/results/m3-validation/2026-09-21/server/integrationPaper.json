@@ -1,0 +1,31 @@
+{
+  "scenario": "block-break-rollback",
+  "status": "PASS",
+  "params": {},
+  "details": {
+    "server.brand": "Paper",
+    "server.minecraftVersion": "26.2",
+    "server.version": "26.2-126-c646faf (MC: 26.2)",
+    "server.regionised": "false",
+    "java.version": "25.0.4+7-LTS-189",
+    "heap.maxBytes": "1073741824",
+    "capture.path": "synthetic BlockBreakEvent/BlockPlaceEvent plus the world change, no client",
+    "areas": "2",
+    "blocks.broken": "24",
+    "blocks.placed": "12",
+    "history.startedAt": "1789950386195",
+    "counters.beforeRollback": "captured=46 published=36 rejectedUnchanged=10 unconfirmed=0 dropped=0 outOfRange=0 stored=36",
+    "rollback": "op=1 state=DONE applied=35 already=0 mismatched=1 chunks=2 scanned=36",
+    "world.threads": "{0,0=Server thread, 128,128=Server thread}",
+    "world.ownsTheOtherArea": "{0,0=true, 128,128=true}",
+    "world.verified": "true"
+  },
+  "metrics": [
+    {"name": "rollback.applied", "value": 35, "unit": "count"},
+    {"name": "rollback.mismatched", "value": 1, "unit": "count"},
+    {"name": "rollback.chunks", "value": 2, "unit": "count"},
+    {"name": "world.restored", "value": 23, "unit": "count"},
+    {"name": "world.cleared", "value": 12, "unit": "count"}
+  ],
+  "failures": []
+}

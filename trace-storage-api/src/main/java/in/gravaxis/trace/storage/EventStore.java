@@ -31,6 +31,37 @@ import org.jspecify.annotations.Nullable;
  */
 public interface EventStore extends AutoCloseable {
 
+    /** Durably stores an opaque, versioned payload; identity is independent of capture slots. */
+    String putBlob(int version, byte[] payload) throws StoreException;
+
+    /** Validates and reads a payload; missing or damaged payloads are errors, never empty data. */
+    byte[] readBlob(String id) throws StoreException;
+
+    /** Attaches an existing payload to an existing event using its absolute identity. */
+    void attachBlob(int worldId, CursorPosition event, String blobId) throws StoreException;
+
+    /** Payload reference for a row returned by a scan, or null when it has no payload. */
+    @Nullable
+    String blobAt(int worldId, CursorPosition event) throws StoreException;
+
+    /** Explicit collection of unreferenced payloads; deferred while readers exist. */
+    long collectBlobs() throws StoreException;
+
+    /** Merges live shards without changing row identities; returns rows rewritten. */
+    long compact() throws StoreException;
+
+    /** Explicit opt-in retention; removes history strictly before the cutoff. */
+    long expireBefore(long cutoffMillis) throws StoreException;
+
+    /** Removes an actor's history in a half-open window, with a persistent replay exclusion. */
+    long purgeActor(int actorId, long fromMillis, long toMillis) throws StoreException;
+
+    /** Checks live shards, quarantining damaged ones atomically with a refusal gap. */
+    VerificationResult verify() throws StoreException;
+
+    /** Removes a shard from the read set and records its loss in one transaction. */
+    void quarantineShard(long shardId, String detail) throws StoreException;
+
     /**
      * Applies a batch of journalled records.
      *
@@ -105,6 +136,9 @@ public interface EventStore extends AutoCloseable {
     /** One operation, or null if there is no such id. */
     @Nullable
     RollbackOperation operation(long operationId) throws StoreException;
+
+    /** Rewinds a previous process's cursor: Minecraft chunk saves are not atomic with checkpoints. */
+    void rewindOperation(long operationId, String runId) throws StoreException;
 
     /**
      * Operations that may still have work left, oldest first.

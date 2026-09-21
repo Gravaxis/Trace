@@ -4,6 +4,10 @@ plugins {
 
 description = "Tier S: the default embedded backend, time-sharded SQLite clustered by chunk."
 
+tasks.test {
+  systemProperty("trace.testClasspath", sourceSets.test.get().runtimeClasspath.asPath)
+}
+
 dependencies {
   api(project(":trace-storage-api"))
 

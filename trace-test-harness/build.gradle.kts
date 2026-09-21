@@ -108,6 +108,12 @@ val integrationFolia = registerScenario("integrationFolia", "folia", "block-brea
 val resumePaper = registerScenario("resumePaper", "paper", "rollback-resume", 25598)
 val resumeFolia = registerScenario("resumeFolia", "folia", "rollback-resume", 25599)
 
+val purgePaper = registerScenario("purgePaper", "paper", "storage-purge", 25602)
+val purgeFolia = registerScenario("purgeFolia", "folia", "storage-purge", 25603)
+val quarantinePaper = registerScenario("quarantinePaper", "paper", "storage-quarantine", 25604)
+val quarantineFolia = registerScenario("quarantineFolia", "folia", "storage-quarantine", 25605)
+tasks.register("storageMaintenanceTest") { dependsOn(purgePaper,purgeFolia,quarantinePaper,quarantineFolia) }
+
 tasks.register("integrationTest") {
   group = "verification"
   description = "Breaks blocks, stores the history and rolls it back, on Paper and on Folia."
@@ -212,6 +218,37 @@ fun registerJournalCrashTest(
 
 val crashJournalPaper = registerJournalCrashTest("crashJournalPaper", "paper", 25596)
 val crashJournalFolia = registerJournalCrashTest("crashJournalFolia", "folia", 25597)
+
+fun registerRollbackCrash(taskName: String, server: String, serverPort: Int) = tasks.register<CrashInjectionTask>(taskName) {
+  group = "verification"
+  description = "Kills a rollback after an asserted checkpoint, compacts, resumes and checks the world."
+  serverProject.set(server)
+  mcVersion.set(pin("$server.version"))
+  buildNumber.set(pin("$server.build").map { it.toInt() })
+  sha256.set(pin("$server.sha256"))
+  contact.set(providers.gradleProperty("trace.contact"))
+  usesService(testServerLock)
+  prepareScenario.set("rollback-crash-prepare")
+  writeScenario.set("rollback-crash-write")
+  verifyScenario.set("rollback-crash-verify")
+  scenarioParams.set(emptyMap())
+  port.set(serverPort)
+  iterations.set(1)
+  minKillDelayMillis.set(100)
+  maxKillDelayMillis.set(100)
+  seed.set(20260921L)
+  javaExecutable.set(launcher.map { it.executablePath.asFile.absolutePath })
+  jvmArgs.set(listOf("-Xms512M", "-Xmx1G"))
+  timeoutSeconds.set(420)
+  pluginJars.from(tracePluginJar, tasks.named("shadowJar"))
+  runDirectory.set(layout.buildDirectory.dir("test-servers/$taskName"))
+  report.set(layout.buildDirectory.file("crash-results/$taskName.json"))
+  serverCacheDirectory.fileValue(serverCache)
+}
+
+val crashRollbackPaper = registerRollbackCrash("crashRollbackPaper", "paper", 25600)
+val crashRollbackFolia = registerRollbackCrash("crashRollbackFolia", "folia", 25601)
+tasks.register("crashRollbackTest") { dependsOn(crashRollbackPaper, crashRollbackFolia) }
 
 tasks.register("crashJournalTest") {
   group = "verification"

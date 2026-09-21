@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Turns events into records, and decides which of them are real.
@@ -40,7 +41,7 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class CaptureService implements AutoCloseable {
 
-    /** Producer slots; beyond this a thread shares the last one. */
+    /** Producer slots; excess threads take an explicit loss path, never share an SPSC ring. */
     public static final int MAX_SLOTS = 32;
 
     /** Records a thread can stage within one tick before the rest are published unconfirmed. */
@@ -67,8 +68,10 @@ public final class CaptureService implements AutoCloseable {
     private final AtomicLong droppedRingFull = new AtomicLong();
     private final AtomicLong outOfRange = new AtomicLong();
     private final AtomicLong slotsExhausted = new AtomicLong();
+    private final AtomicLong droppedNoSlot = new AtomicLong();
+    private final CaptureLoss losses;
 
-    private final ThreadLocal<Producer> producers = ThreadLocal.withInitial(this::newProducer);
+    private final ThreadLocal<@Nullable Producer> producers = ThreadLocal.withInitial(this::newProducer);
 
     public CaptureService(Path ringDirectory, int ringCapacity) {
         this(ringDirectory, ringCapacity, DEFAULT_MAX_CLOCK_DRIFT_MILLIS);
@@ -86,6 +89,11 @@ public final class CaptureService implements AutoCloseable {
         this.ringDirectory = ringDirectory;
         this.ringCapacity = ringCapacity;
         this.maxClockDriftMillis = maxClockDriftMillis;
+        try {
+            losses = CaptureLoss.open(ringDirectory.resolve("capture.loss"));
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not open capture loss marker", e);
+        }
     }
 
     /** Every ring in use, for the consumer to drain and for recovery to replay. */
@@ -138,10 +146,16 @@ public final class CaptureService implements AutoCloseable {
         captured.incrementAndGet();
         if (!EventRecords.positionInRange(x, y, z)) {
             outOfRange.incrementAndGet();
+            losses.record(System.currentTimeMillis() + maxClockDriftMillis);
             return;
         }
         long now = System.currentTimeMillis();
         Producer producer = producers.get();
+        if (producer == null) {
+            losses.record(now + maxClockDriftMillis);
+            droppedNoSlot.incrementAndGet();
+            return;
+        }
         if (!producer.stage(worldId, x, y, z, beforeStateId, actorId, cause, kind, now)) {
             // The staging buffer is full: publish without confirming rather than lose the record.
             // The rollback engine verifies the world before it touches anything, so an unconfirmed
@@ -158,12 +172,14 @@ public final class CaptureService implements AutoCloseable {
      * the block needs no scheduling and no chunk load: the chunk was touched moments ago.
      */
     public void confirmStaged(StateReader reader) {
-        producers.get().confirm(reader, this);
+        Producer producer = producers.get();
+        if (producer != null) producer.confirm(reader, this);
     }
 
     /** Publishes everything staged without checking; used when a thread is going away. */
     public void flushStagedUnconfirmed() {
-        producers.get().flushUnconfirmed(this);
+        Producer producer = producers.get();
+        if (producer != null) producer.flushUnconfirmed(this);
     }
 
     void publish(
@@ -183,6 +199,7 @@ public final class CaptureService implements AutoCloseable {
             // The slot's clock would have to drift further than ordering allows. Dropping is
             // honest; misdating the record would corrupt the order history is read in.
             droppedSlotOverflow.incrementAndGet();
+            losses.record(Math.max(System.currentTimeMillis(), capturedMillis) + maxClockDriftMillis);
             producer.ring.countDrop();
             return;
         }
@@ -196,6 +213,7 @@ public final class CaptureService implements AutoCloseable {
             // M2 has no spill segment yet, so a full ring means a dropped record and a gap. The gap
             // is what makes a later rollback over this window refuse instead of guessing.
             droppedRingFull.incrementAndGet();
+            losses.record(Math.max(System.currentTimeMillis(), capturedMillis) + maxClockDriftMillis);
             producer.ring.countDrop();
         }
     }
@@ -219,7 +237,7 @@ public final class CaptureService implements AutoCloseable {
 
     /** Records lost, for whatever reason. Each one has to be covered by a gap. */
     public long dropped() {
-        return droppedSlotOverflow.get() + droppedRingFull.get();
+        return droppedSlotOverflow.get() + droppedRingFull.get() + droppedNoSlot.get();
     }
 
     /**
@@ -246,13 +264,27 @@ public final class CaptureService implements AutoCloseable {
         return slotsExhausted.get();
     }
 
-    private Producer newProducer() {
+    public long droppedNoSlot() {
+        return droppedNoSlot.get();
+    }
+
+    public long lossFromMillis() {
+        return losses.fromMillis();
+    }
+
+    public long lossToMillis() {
+        return losses.toMillis();
+    }
+
+    public long lossCount() {
+        return losses.count();
+    }
+
+    private @Nullable Producer newProducer() {
         int slot = nextSlot.getAndIncrement();
         if (slot >= MAX_SLOTS) {
-            // Every slot is taken; share the last one. Key uniqueness still holds, because it comes
-            // from the clock inside the slot, but it is worth knowing about, so it is counted.
             slotsExhausted.incrementAndGet();
-            slot = MAX_SLOTS - 1;
+            return null;
         }
         try {
             MappedEventRing ring =
@@ -279,6 +311,7 @@ public final class CaptureService implements AutoCloseable {
             ring.force();
             ring.close();
         }
+        losses.close();
     }
 
     /** Reads the state of a position right now, in interned form. */

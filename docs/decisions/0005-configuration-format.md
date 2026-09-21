@@ -2,7 +2,7 @@
 
 * **Status:** accepted
 * **Date:** 2026-09-20
-* **Milestone:** M0 (implemented in M2)
+* **Milestone:** M0 decision; implementation remains outstanding as of M3 work
 
 ## Context
 

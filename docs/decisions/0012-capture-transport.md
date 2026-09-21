@@ -59,6 +59,11 @@ suffix" would pass while L8 was being violated.
 
 ### Known defect: the thirty-third capture thread (2026-09-20)
 
+**M3 update (2026-09-21):** the silent sharing described below is historical.
+ADR-0019 replaces it with counted rejection and persisted conservative gap bounds.
+Reclamation, spill and a shared fallback remain unimplemented. The description
+below records the original defect rather than the current containment behavior.
+
 There are 32 producer slots. A thread beyond that is given the last slot, and the code says so and
 counts it (`slotsExhausted`). What it then does is wrong: it opens a *second* mapping of that slot's
 ring file and builds a second clock for it, so two threads write into a ring that is single-producer

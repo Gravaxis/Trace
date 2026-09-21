@@ -1,0 +1,11 @@
+        {
+          "gate": "P1 zero allocation",
+          "thresholdBytesPerOp": 0.01,
+          "measured": [
+            {"benchmark": "in.gravaxis.trace.bench.BaselineBenchmark.allocatingReference", "allocBytesPerOp": 48.0000345852759},
+{"benchmark": "in.gravaxis.trace.bench.BaselineBenchmark.emptyBaseline", "allocBytesPerOp": 1.4289149780880768E-5},
+{"benchmark": "in.gravaxis.trace.bench.CaptureBenchmark.capturePublishedToRing", "allocBytesPerOp": 0.001324739281226064},
+{"benchmark": "in.gravaxis.trace.bench.CaptureBenchmark.captureRejectedAtTickEnd", "allocBytesPerOp": 9.3276931386316E-4}
+          ],
+          "violations": 0
+        }
