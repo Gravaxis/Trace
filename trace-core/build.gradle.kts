@@ -15,3 +15,18 @@ dependencies {
   testImplementation(testFixtures(project(":trace-core")))
   testImplementation(libs.archunit)
 }
+
+tasks.test {
+  systemProperty("trace.testClasspath", sourceSets.test.get().runtimeClasspath.asPath)
+}
+
+tasks.register<Test>("payloadQueueTest") {
+  group = "verification"
+  description = "Fresh bounded-payload branch and process-kill proof, without a server."
+  testClassesDirs = sourceSets.test.get().output.classesDirs
+  classpath = sourceSets.test.get().runtimeClasspath
+  systemProperty("trace.testClasspath", sourceSets.test.get().runtimeClasspath.asPath)
+  useJUnitPlatform()
+  filter { includeTestsMatching("*BoundedPayloadQueueTest") }
+  outputs.upToDateWhen { false }
+}

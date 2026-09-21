@@ -199,6 +199,17 @@ tasks.register<JavaExec>("clientCaptureEvidence") {
   outputs.upToDateWhen { false }
 }
 
+tasks.register<JavaExec>("payloadQueueEvidence") {
+  group = "verification"
+  description = "Runs fresh bounded payload tests and records their revision and scope."
+  dependsOn(":trace-core:payloadQueueTest")
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("in.gravaxis.trace.bench.PayloadQueueEvidence")
+  workingDir(rootProject.layout.projectDirectory)
+  args(rootProject.layout.projectDirectory.asFile.absolutePath)
+  outputs.upToDateWhen { false }
+}
+
 tasks.register<JavaExec>("m3MaintenanceEvidence") {
   group = "verification"
   description = "Records unit and serial maintenance-only evidence after a scoped storage change."
