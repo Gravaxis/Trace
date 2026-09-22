@@ -30,7 +30,7 @@ public final class ConfirmationEvidence {
                 "confirmationTest",
                 "in.gravaxis.trace.core.capture.CaptureServiceTest",
                 Set.of(
-                        "stagingExhaustionIsGappedAndDuplicatesStillFit()",
+                        "staging exhaustion gaps the loss instead of inventing an unconfirmed row",
                         "repeatedPositionKeepsFirstBeforeAndFinalAfterAndResetsIndex()",
                         "roundTripToFirstStateRejectsEveryObservationEvenWithMixedAttribution()",
                         "ambiguousChangedAttributionGapsAllObservations()",
@@ -45,9 +45,9 @@ public final class ConfirmationEvidence {
                 "in.gravaxis.trace.pipeline.ConfirmationConsumerTest",
                 Set.of("flushRefusesFailedConfirmationGapAndRetryPersistsItWithoutInventedRows()"));
         var allocation = Set.of(
-                "rejectingATickAllocatesNothing()",
-                "publishingATickAllocatesNothing()",
-                "counterDetectsAllocation()",
+                "a tick of events that changed nothing allocates nothing at all",
+                "a tick of real changes, packed and written to the ring, allocates nothing at all",
+                "the counter itself can see an allocation, so a zero above means something",
                 "coalescedPublicationAllocatesNothingAndPublishesOneRowPerPosition()",
                 "ambiguousObservationAllocatesNothingAndGapsBothInputs()",
                 "missingConfirmationAllocatesNothingAndRecordsLoss()",
