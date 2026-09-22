@@ -73,6 +73,8 @@ public final class CaptureHarness implements AutoCloseable {
     private final CaptureService.StateReader unchanged = (world, x, y, z) -> BEFORE_STATE;
 
     private final CaptureService.StateReader changed = (world, x, y, z) -> BEFORE_STATE + 1;
+    private final CaptureService.StateReader unavailable = (world, x, y, z) -> CaptureService.UNKNOWN_STATE;
+    private final CaptureService.StateReader invalid = (world, x, y, z) -> EventRecords.MAX_STATE_ID + 1;
 
     private final Path directory;
     private final boolean ownsDirectory;
@@ -143,6 +145,48 @@ public final class CaptureHarness implements AutoCloseable {
         if (ring != null) {
             ring.discardPending();
         }
+    }
+
+    public void tickCoalescing() {
+        stageRepeated(false);
+        service.confirmStaged(changed);
+        ring.discardPending();
+    }
+
+    public void tickAmbiguous() {
+        stageRepeated(true);
+        service.confirmStaged(changed);
+    }
+
+    public void tickUnavailable() {
+        stage(RECORDS_PER_TICK);
+        service.confirmStaged(unavailable);
+    }
+
+    public void tickInvalidState() {
+        stage(RECORDS_PER_TICK);
+        service.confirmStaged(invalid);
+    }
+
+    public void tickUnconfirmedFlush() {
+        stage(RECORDS_PER_TICK);
+        service.flushStagedUnconfirmed();
+    }
+
+    public void tickStagingFull() {
+        stage(CaptureService.STAGING_CAPACITY + 1);
+        service.confirmStaged(unchanged);
+    }
+
+    private void stageRepeated(boolean mixedActor) {
+        for (int i = 0; i < RECORDS_PER_TICK; i++) {
+            service.captureBlockChange(WORLD, i, Y, 0, BEFORE_STATE, ACTOR, CAUSE, KIND);
+            service.captureBlockChange(WORLD, i, Y, 0, BEFORE_STATE, ACTOR + (mixedActor ? 1 : 0), CAUSE, KIND);
+        }
+    }
+
+    public CaptureService service() {
+        return service;
     }
 
     private void stage(int records) {

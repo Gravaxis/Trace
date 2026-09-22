@@ -291,21 +291,25 @@ public final class StoreConsumer implements Runnable {
      * now it did not: the counter went up and nothing else happened, so a rollback over a window
      * where the ring had overflowed would have run believing the history complete.
      *
-     * <p>The window is from the previous check to now. A record counted as dropped in this pass was
-     * dropped after the previous pass, so that interval always contains it; the capture path does
-     * not keep the timestamps of things it threw away, and inventing a narrower window would be
-     * guessing in the one direction that matters.
+     * <p>The mapped capture-loss bounds survive process death and only widen. Checking on a timer
+     * amortises routine writes, but an explicit flush must persist them before a reader can trust
+     * the flushed window (ADR-0024).
      */
     private void maybeRecordDrops() {
         long now = System.currentTimeMillis();
         if (now - lastDropCheckAt < forceIntervalMillis) {
             return;
         }
+        recordPendingDrops();
+    }
+
+    private boolean recordPendingDrops() {
+        long now = System.currentTimeMillis();
         long dropped = capture.lossCount();
         long unreported = dropped - reportedDrops;
         if (unreported <= 0) {
             lastDropCheckAt = now;
-            return;
+            return true;
         }
         boolean recorded = recordGap(
                 capture.lossFromMillis(),
@@ -313,13 +317,14 @@ public final class StoreConsumer implements Runnable {
                 GapRecord.Reason.OVERFLOW,
                 unreported,
                 unreported
-                        + " records rejected by capture; conservative persisted loss window includes producer exhaustion, ring/clock overflow and out-of-range positions");
+                        + " observations lost by capture; conservative persisted window includes transport, invalid input, unavailable confirmation and ambiguous attribution");
         if (recorded) {
             reportedDrops = dropped;
             lastDropCheckAt = now;
         }
         // If the gap could not be written, the window stays open and the next pass tries again with
         // a wider one. Losing the record of a loss is the one outcome worth retrying for.
+        return recorded;
     }
 
     private boolean recordGap(long fromMillis, long toMillis, GapRecord.Reason reason, long count, String detail) {
@@ -351,6 +356,9 @@ public final class StoreConsumer implements Runnable {
                     flushBuffer();
                 }
                 flushBuffer();
+                if (!recordPendingDrops()) {
+                    throw new StoreException(StoreException.Reason.DISK, "Capture loss gap could not be persisted");
+                }
                 journal.force();
                 lastForceAt = System.currentTimeMillis();
                 if (request.seal) {

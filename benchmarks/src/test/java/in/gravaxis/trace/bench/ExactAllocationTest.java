@@ -111,6 +111,87 @@ class ExactAllocationTest {
     }
 
     @Test
+    void coalescedPublicationAllocatesNothingAndPublishesOneRowPerPosition() {
+        long before = harness.published();
+        long cleanest = quietestWindow(harness::tickCoalescing);
+        long expected = measuredTicks() * CaptureHarness.RECORDS_PER_TICK;
+        assertThat(harness.service().coalesced()).isEqualTo(expected);
+        assertThat(harness.published() - before).isEqualTo(expected);
+        assertThat(harness.dropped()).isZero();
+        assertZeroBytes(cleanest, "coalesced-publication");
+    }
+
+    @Test
+    void ambiguousObservationAllocatesNothingAndGapsBothInputs() {
+        long before = harness.published();
+        long cleanest = quietestWindow(harness::tickAmbiguous);
+        long expected = measuredTicks() * CaptureHarness.RECORDS_PER_TICK;
+        assertThat(harness.service().coalesced()).isEqualTo(expected);
+        assertThat(harness.service().droppedAmbiguous()).isEqualTo(expected * 2);
+        assertThat(harness.dropped()).isEqualTo(expected * 2);
+        assertThat(harness.service().lossCount()).isEqualTo(expected * 2);
+        assertThat(harness.published()).isEqualTo(before);
+        assertZeroBytes(cleanest, "ambiguous-loss");
+    }
+
+    @Test
+    void missingConfirmationAllocatesNothingAndRecordsLoss() {
+        long before = harness.published();
+        long cleanest = quietestWindow(harness::tickUnavailable);
+        long expected = measuredTicks() * CaptureHarness.RECORDS_PER_TICK;
+        assertThat(harness.service().droppedUnreadable()).isEqualTo(expected);
+        assertThat(harness.unconfirmed()).isEqualTo(expected);
+        assertThat(harness.dropped()).isEqualTo(expected);
+        assertThat(harness.service().lossCount()).isEqualTo(expected);
+        assertThat(harness.published()).isEqualTo(before);
+        assertZeroBytes(cleanest, "unavailable-loss");
+    }
+
+    @Test
+    void invalidPostStateAllocatesNothingAndCannotBePacked() {
+        long before = harness.published();
+        long cleanest = quietestWindow(harness::tickInvalidState);
+        long expected = measuredTicks() * CaptureHarness.RECORDS_PER_TICK;
+        assertThat(harness.service().invalidFields()).isEqualTo(expected);
+        assertThat(harness.dropped()).isEqualTo(expected);
+        assertThat(harness.service().lossCount()).isEqualTo(expected);
+        assertThat(harness.published()).isEqualTo(before);
+        assertZeroBytes(cleanest, "invalid-state-loss");
+    }
+
+    @Test
+    void unconfirmedFlushAllocatesNothingAndOnlyGaps() {
+        long before = harness.published();
+        long cleanest = quietestWindow(harness::tickUnconfirmedFlush);
+        long expected = measuredTicks() * CaptureHarness.RECORDS_PER_TICK;
+        assertThat(harness.service().droppedUnconfirmedFlush()).isEqualTo(expected);
+        assertThat(harness.unconfirmed()).isEqualTo(expected);
+        assertThat(harness.dropped()).isEqualTo(expected);
+        assertThat(harness.service().lossCount()).isEqualTo(expected);
+        assertThat(harness.published()).isEqualTo(before);
+        assertZeroBytes(cleanest, "unconfirmed-flush-loss");
+    }
+
+    @Test
+    void stagingExhaustionAllocatesNothingAndDoesNotPublish() {
+        long before = harness.published();
+        long rejected = harness.rejectedUnchanged();
+        long cleanest = quietestWindow(harness::tickStagingFull);
+        assertThat(harness.service().droppedStagingFull()).isEqualTo(measuredTicks());
+        assertThat(harness.unconfirmed()).isEqualTo(measuredTicks());
+        assertThat(harness.dropped()).isEqualTo(measuredTicks());
+        assertThat(harness.service().lossCount()).isEqualTo(measuredTicks());
+        assertThat(harness.rejectedUnchanged() - rejected)
+                .isEqualTo(measuredTicks() * in.gravaxis.trace.core.capture.CaptureService.STAGING_CAPACITY);
+        assertThat(harness.published()).isEqualTo(before);
+        assertZeroBytes(cleanest, "staging-full-loss");
+    }
+
+    private static long measuredTicks() {
+        return WARMUP_TICKS + (long) MEASURED_TICKS * MEASUREMENT_WINDOWS;
+    }
+
+    @Test
     @DisplayName("the counter itself can see an allocation, so a zero above means something")
     void counterDetectsAllocation() {
         long before = threads.getCurrentThreadAllocatedBytes();

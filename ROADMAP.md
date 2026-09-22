@@ -286,6 +286,19 @@ remain incomplete. Power loss and arbitrary-instruction crashes remain unproven;
 payload allocation and performance are **not measured**. This follow-up resolves
 the transport integration prerequisite above, not M4's full capture gate.
 
+**2026-09-22 confirmation foundation:** the
+[completion plan](docs/design/m4-completion-plan.md) and
+[ADR-0024](docs/decisions/0024-confirmation-loss-and-net-observations.md) replace
+unconfirmed before=after rows with counted, persistent loss. Repeated positions
+within a producer tick keep the first before-state and final observation; mixed
+attribution on a changed position is gapped. Packed field overflow is rejected.
+Flush now refuses if capture-loss gaps cannot be persisted; its injected-failure
+regression failed before the fix. Runtime confirmation checks ownership and chunk
+availability before reading. The `confirmationEvidence` task records the scoped
+branch/allocation and existing serial server regressions; committed results are
+pending. Full-state capture, dictionary publication and the remaining M4 families
+are still incomplete. Earlier evidence retains its original scope.
+
 Tracked in the ADRs rather than here, but the ones that shape upcoming work:
 
 * **M1** — whether JMH's `gc.alloc.rate.norm` can report exactly `0.0` for a provably empty

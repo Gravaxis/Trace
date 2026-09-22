@@ -275,3 +275,12 @@ The source-labelled evidence is
 [here](../../benchmarks/results/payload-integration/2026-09-22-095619-cba62e8af72b/complete.json).
 This observation does not establish natural payload capture, independent client
 wire compatibility, NBT fidelity, power-loss safety or payload performance.
+
+## 2026-09-22: confirmation ownership precheck
+
+Verified with JDK 25 javap against both pinned API jars, Paper
+`26.2.build.126-stable` and Folia `26.2.build.7-beta`:
+`Bukkit.isOwnedByCurrentRegion(World, int, int)` and
+`World.isChunkLoaded(int, int)` exist. `BlockCaptureListener.stateAt` checks the
+chunk coordinates before its world read. This signature check does not alone
+prove runtime ownership behavior; the serial client regression remains required.

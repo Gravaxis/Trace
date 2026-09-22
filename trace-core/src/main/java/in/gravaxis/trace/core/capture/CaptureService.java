@@ -14,6 +14,7 @@ import in.gravaxis.trace.core.time.SlotClock;
 import in.gravaxis.trace.core.time.TraceEpoch;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -44,7 +45,7 @@ public final class CaptureService implements AutoCloseable {
     /** Producer slots; excess threads take an explicit loss path, never share an SPSC ring. */
     public static final int MAX_SLOTS = 32;
 
-    /** Records a thread can stage within one tick before the rest are published unconfirmed. */
+    /** Distinct positions a thread can stage within one tick before further positions are gapped. */
     public static final int STAGING_CAPACITY = 4096;
 
     /** How far the slot clock may run ahead of wall time before a record is dropped. */
@@ -64,6 +65,12 @@ public final class CaptureService implements AutoCloseable {
     private final AtomicLong published = new AtomicLong();
     private final AtomicLong rejectedUnchanged = new AtomicLong();
     private final AtomicLong unconfirmed = new AtomicLong();
+    private final AtomicLong coalesced = new AtomicLong();
+    private final AtomicLong droppedStagingFull = new AtomicLong();
+    private final AtomicLong droppedUnreadable = new AtomicLong();
+    private final AtomicLong droppedUnconfirmedFlush = new AtomicLong();
+    private final AtomicLong droppedAmbiguous = new AtomicLong();
+    private final AtomicLong invalidFields = new AtomicLong();
     private final AtomicLong droppedSlotOverflow = new AtomicLong();
     private final AtomicLong droppedRingFull = new AtomicLong();
     private final AtomicLong outOfRange = new AtomicLong();
@@ -149,6 +156,17 @@ public final class CaptureService implements AutoCloseable {
             losses.record(System.currentTimeMillis() + maxClockDriftMillis);
             return;
         }
+        if (worldId < 0
+                || worldId > EventRecords.MAX_WORLD_ID
+                || !stateInRange(beforeStateId)
+                || cause < 0
+                || cause > 0xFF
+                || kind < 0
+                || kind > 0xF) {
+            invalidFields.incrementAndGet();
+            losses.record(System.currentTimeMillis() + maxClockDriftMillis);
+            return;
+        }
         long now = System.currentTimeMillis();
         Producer producer = producers.get();
         if (producer == null) {
@@ -157,11 +175,13 @@ public final class CaptureService implements AutoCloseable {
             return;
         }
         if (!producer.stage(worldId, x, y, z, beforeStateId, actorId, cause, kind, now)) {
-            // The staging buffer is full: publish without confirming rather than lose the record.
-            // The rollback engine verifies the world before it touches anything, so an unconfirmed
-            // record can only cost a skipped position; losing a real one costs history.
+            // A before=after row would claim knowledge we do not have. ADR-0024 replaces that
+            // fallback with a gap, which makes rollback refuse the uncertain window.
             unconfirmed.incrementAndGet();
-            publish(producer, worldId, x, y, z, beforeStateId, beforeStateId, actorId, cause, kind, now);
+            droppedStagingFull.incrementAndGet();
+            losses.record(now + maxClockDriftMillis);
+        } else if (producer.lastStageCoalesced) {
+            coalesced.incrementAndGet();
         }
     }
 
@@ -176,7 +196,7 @@ public final class CaptureService implements AutoCloseable {
         if (producer != null) producer.confirm(reader, this);
     }
 
-    /** Publishes everything staged without checking; used when a thread is going away. */
+    /** Discards staged observations with persistent loss bounds when confirmation is impossible. */
     public void flushStagedUnconfirmed() {
         Producer producer = producers.get();
         if (producer != null) producer.flushUnconfirmed(this);
@@ -235,9 +255,50 @@ public final class CaptureService implements AutoCloseable {
         return unconfirmed.get();
     }
 
+    public long coalesced() {
+        return coalesced.get();
+    }
+
+    public long droppedStagingFull() {
+        return droppedStagingFull.get();
+    }
+
+    public long droppedUnreadable() {
+        return droppedUnreadable.get();
+    }
+
+    public long droppedUnconfirmedFlush() {
+        return droppedUnconfirmedFlush.get();
+    }
+
+    public long droppedAmbiguous() {
+        return droppedAmbiguous.get();
+    }
+
+    public long invalidFields() {
+        return invalidFields.get();
+    }
+
+    long indexCollisions() {
+        Producer producer = producers.get();
+        return producer == null ? 0 : producer.indexCollisions;
+    }
+
+    private static boolean stateInRange(int state) {
+        return state >= 0 && state <= EventRecords.MAX_STATE_ID;
+    }
+
     /** Records lost, for whatever reason. Each one has to be covered by a gap. */
     public long dropped() {
-        return droppedSlotOverflow.get() + droppedRingFull.get() + droppedNoSlot.get();
+        return droppedSlotOverflow.get()
+                + droppedRingFull.get()
+                + droppedNoSlot.get()
+                + droppedStagingFull.get()
+                + droppedUnreadable.get()
+                + droppedUnconfirmedFlush.get()
+                + droppedAmbiguous.get()
+                + invalidFields.get()
+                + outOfRange.get();
     }
 
     /**
@@ -342,6 +403,11 @@ public final class CaptureService implements AutoCloseable {
         private final int[] causes = new int[STAGING_CAPACITY];
         private final int[] kinds = new int[STAGING_CAPACITY];
         private final long[] capturedAt = new long[STAGING_CAPACITY];
+        private final int[] observations = new int[STAGING_CAPACITY];
+        private final boolean[] ambiguous = new boolean[STAGING_CAPACITY];
+        private final int[] index = new int[STAGING_CAPACITY * 2];
+        private boolean lastStageCoalesced;
+        private long indexCollisions;
         private int staged;
 
         /**
@@ -360,22 +426,42 @@ public final class CaptureService implements AutoCloseable {
 
         boolean stage(
                 int worldId, int x, int y, int z, int before, int actorId, int cause, int kind, long capturedMillis) {
+            lastStageCoalesced = false;
+            long hash = EventRecords.packPosition(x, y, z) ^ ((long) worldId * 0x9E3779B97F4A7C15L);
+            hash = (hash ^ (hash >>> 30)) * 0xBF58476D1CE4E5B9L;
+            hash = (hash ^ (hash >>> 27)) * 0x94D049BB133111EBL;
+            int bucket = (int) (hash ^ (hash >>> 31)) & (index.length - 1);
+            while (index[bucket] != 0) {
+                int previous = index[bucket] - 1;
+                if (worldIds[previous] == worldId && xs[previous] == x && ys[previous] == y && zs[previous] == z) {
+                    observations[previous]++;
+                    ambiguous[previous] |=
+                            actors[previous] != actorId || causes[previous] != cause || kinds[previous] != kind;
+                    lastStageCoalesced = true;
+                    return true;
+                }
+                indexCollisions++;
+                bucket = (bucket + 1) & (index.length - 1);
+            }
             if (staged == STAGING_CAPACITY) {
                 return false;
             }
             if (staged == 0) {
                 oldestStagedMillis = capturedMillis;
             }
-            int index = staged++;
-            worldIds[index] = worldId;
-            xs[index] = x;
-            ys[index] = y;
-            zs[index] = z;
-            befores[index] = before;
-            actors[index] = actorId;
-            causes[index] = cause;
-            kinds[index] = kind;
-            capturedAt[index] = capturedMillis;
+            int next = staged++;
+            index[bucket] = next + 1;
+            worldIds[next] = worldId;
+            xs[next] = x;
+            ys[next] = y;
+            zs[next] = z;
+            befores[next] = before;
+            actors[next] = actorId;
+            causes[next] = cause;
+            kinds[next] = kind;
+            capturedAt[next] = capturedMillis;
+            observations[next] = 1;
+            ambiguous[next] = false;
             return true;
         }
 
@@ -383,26 +469,40 @@ public final class CaptureService implements AutoCloseable {
             for (int i = 0; i < staged; i++) {
                 int now = reader.stateAt(worldIds[i], xs[i], ys[i], zs[i]);
                 if (now == UNKNOWN_STATE) {
-                    service.unconfirmed.incrementAndGet();
-                    publishStaged(service, i, befores[i]);
+                    service.unconfirmed.addAndGet(observations[i]);
+                    lose(service, i, service.droppedUnreadable);
+                } else if (!stateInRange(now)) {
+                    lose(service, i, service.invalidFields);
                 } else if (now == befores[i]) {
                     // The event fired and the world is unchanged: it did not happen.
-                    service.rejectedUnchanged.incrementAndGet();
+                    service.rejectedUnchanged.addAndGet(observations[i]);
+                } else if (ambiguous[i]) {
+                    lose(service, i, service.droppedAmbiguous);
                 } else {
                     publishStaged(service, i, now);
                 }
             }
             staged = 0;
+            Arrays.fill(index, 0);
             oldestStagedMillis = Long.MAX_VALUE;
         }
 
         void flushUnconfirmed(CaptureService service) {
             for (int i = 0; i < staged; i++) {
-                service.unconfirmed.incrementAndGet();
-                publishStaged(service, i, befores[i]);
+                service.unconfirmed.addAndGet(observations[i]);
+                lose(service, i, service.droppedUnconfirmedFlush);
             }
             staged = 0;
+            Arrays.fill(index, 0);
             oldestStagedMillis = Long.MAX_VALUE;
+        }
+
+        private void lose(CaptureService service, int index, AtomicLong counter) {
+            counter.addAndGet(observations[index]);
+            for (int n = 0; n < observations[index]; n++) {
+                service.losses.record(
+                        Math.max(System.currentTimeMillis(), capturedAt[index]) + service.maxClockDriftMillis);
+            }
         }
 
         private void publishStaged(CaptureService service, int index, int after) {

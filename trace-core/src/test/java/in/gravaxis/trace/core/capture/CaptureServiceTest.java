@@ -163,17 +163,146 @@ class CaptureServiceTest {
     }
 
     @Test
-    @DisplayName("staging more than a tick can hold publishes the rest unconfirmed rather than losing it")
-    void publishesUnconfirmedWhenStagingIsFull() {
+    @DisplayName("staging exhaustion gaps the loss instead of inventing an unconfirmed row")
+    void stagingExhaustionIsGappedAndDuplicatesStillFit() {
         int overflow = CaptureService.STAGING_CAPACITY + 10;
         for (int i = 0; i < overflow; i++) {
             capture.captureBlockChange(WORLD, i & 0xFFFF, Y, 0, STONE, ACTOR, CAUSE, KIND);
         }
 
-        assertThat(capture.unconfirmed())
-                .as("an unconfirmed record costs a skipped position; a lost one costs history")
-                .isEqualTo(10);
-        assertThat(capture.published()).isEqualTo(10);
+        capture.captureBlockChange(WORLD, 0, Y, 0, STONE, ACTOR, CAUSE, KIND);
+        assertThat(capture.coalesced()).isEqualTo(1);
+        assertThat(capture.unconfirmed()).isEqualTo(10);
+        assertThat(capture.droppedStagingFull()).isEqualTo(10);
+        assertThat(capture.dropped()).isEqualTo(10);
+        assertThat(capture.published()).isZero();
+        capture.confirmStaged((w, x, y, z) -> STONE);
+        assertThat(capture.rejectedUnchanged()).isEqualTo(CaptureService.STAGING_CAPACITY + 1);
+        assertThat(drainAll()).isEmpty();
+        assertThat(capture.lossCount()).isEqualTo(10);
+    }
+
+    @Test
+    void repeatedPositionKeepsFirstBeforeAndFinalAfterAndResetsIndex() {
+        for (int tick = 0; tick < 3; tick++) {
+            capture.captureBlockChange(WORLD, 3, Y, 4, STONE, ACTOR, CAUSE, KIND);
+            capture.captureBlockChange(WORLD, 3, Y, 4, 12, ACTOR, CAUSE, KIND);
+            capture.confirmStaged((w, x, y, z) -> AIR);
+            List<long[]> rows = drainAll();
+            assertThat(rows).hasSize(1);
+            long[] row = rows.getFirst();
+            assertThat(EventRecords.beforeState(row[1])).isEqualTo(STONE);
+            assertThat(EventRecords.afterState(row[1])).isEqualTo(AIR);
+            assertThat(EventRecords.actorId(row[2], row[3])).isEqualTo(ACTOR);
+            assertThat(EventRecords.cause(row[3])).isEqualTo(CAUSE);
+        }
+        assertThat(capture.captured()).isEqualTo(6);
+        assertThat(capture.coalesced()).isEqualTo(3);
+        assertThat(capture.published()).isEqualTo(3);
+        assertThat(capture.dropped()).isZero();
+    }
+
+    @Test
+    void roundTripToFirstStateRejectsEveryObservationEvenWithMixedAttribution() {
+        capture.captureBlockChange(WORLD, 3, Y, 4, STONE, ACTOR, CAUSE, KIND);
+        capture.captureBlockChange(WORLD, 3, Y, 4, AIR, ACTOR + 1, CAUSE + 1, KIND);
+        capture.confirmStaged((w, x, y, z) -> STONE);
+        assertThat(capture.coalesced()).isEqualTo(1);
+        assertThat(capture.rejectedUnchanged()).isEqualTo(2);
+        assertThat(capture.published()).isZero();
+        assertThat(capture.dropped()).isZero();
+        assertThat(drainAll()).isEmpty();
+    }
+
+    @Test
+    void ambiguousChangedAttributionGapsAllObservations() throws Exception {
+        long before = System.currentTimeMillis();
+        for (int branch = 0; branch < 3; branch++) {
+            capture.captureBlockChange(WORLD, branch, Y, 0, STONE, ACTOR, CAUSE, KIND);
+            capture.captureBlockChange(
+                    WORLD,
+                    branch,
+                    Y,
+                    0,
+                    STONE,
+                    ACTOR + (branch == 0 ? 1 : 0),
+                    CAUSE + (branch == 1 ? 1 : 0),
+                    KIND + (branch == 2 ? 1 : 0));
+        }
+        capture.confirmStaged((w, x, y, z) -> AIR);
+        assertThat(capture.coalesced()).isEqualTo(3);
+        assertThat(capture.droppedAmbiguous()).isEqualTo(6);
+        assertThat(capture.dropped()).isEqualTo(6);
+        assertThat(capture.published()).isZero();
+        assertThat(drainAll()).isEmpty();
+        try (var losses = CaptureLoss.open(directory.resolve("capture.loss"))) {
+            assertThat(losses.count()).isEqualTo(6);
+            assertThat(losses.fromMillis()).isLessThanOrEqualTo(before);
+            assertThat(losses.toMillis()).isGreaterThanOrEqualTo(before);
+        }
+    }
+
+    @Test
+    void unreadableAndExplicitFlushNeverPublishInventedRows() throws Exception {
+        long before = System.currentTimeMillis();
+        capture.captureBlockChange(WORLD, 1, Y, 0, STONE, ACTOR, CAUSE, KIND);
+        capture.confirmStaged((w, x, y, z) -> CaptureService.UNKNOWN_STATE);
+        capture.captureBlockChange(WORLD, 1, Y, 0, STONE, ACTOR, CAUSE, KIND);
+        capture.flushStagedUnconfirmed();
+        capture.confirmStaged((w, x, y, z) -> {
+            throw new AssertionError("flush left staged data");
+        });
+        assertThat(capture.droppedUnreadable()).isEqualTo(1);
+        assertThat(capture.droppedUnconfirmedFlush()).isEqualTo(1);
+        assertThat(capture.unconfirmed()).isEqualTo(2);
+        assertThat(capture.dropped()).isEqualTo(2);
+        assertThat(capture.published()).isZero();
+        assertThat(drainAll()).isEmpty();
+        try (var losses = CaptureLoss.open(directory.resolve("capture.loss"))) {
+            assertThat(losses.count()).isEqualTo(2);
+            assertThat(losses.fromMillis()).isLessThanOrEqualTo(before);
+            assertThat(losses.toMillis()).isGreaterThanOrEqualTo(before);
+        }
+    }
+
+    @Test
+    void packedFieldOverflowAndInvalidReaderStatesAreGappedBeforeEncoding() {
+        int[][] invalid = {
+            {-1, STONE, CAUSE, KIND}, {EventRecords.MAX_WORLD_ID + 1, STONE, CAUSE, KIND},
+            {WORLD, -1, CAUSE, KIND}, {WORLD, EventRecords.MAX_STATE_ID + 1, CAUSE, KIND},
+            {WORLD, STONE, -1, KIND}, {WORLD, STONE, 256, KIND},
+            {WORLD, STONE, CAUSE, -1}, {WORLD, STONE, CAUSE, 16}
+        };
+        for (int[] fields : invalid)
+            capture.captureBlockChange(fields[0], 1, Y, 0, fields[1], ACTOR, fields[2], fields[3]);
+        assertThat(capture.rings()).isEmpty();
+        for (int state : new int[] {-2, EventRecords.MAX_STATE_ID + 1}) {
+            capture.captureBlockChange(WORLD, 1, Y, 0, STONE, ACTOR, CAUSE, KIND);
+            capture.confirmStaged((w, x, y, z) -> state);
+        }
+        assertThat(capture.invalidFields()).isEqualTo(10);
+        assertThat(capture.dropped()).isEqualTo(10);
+        assertThat(capture.lossCount()).isEqualTo(10);
+        assertThat(capture.published()).isZero();
+        assertThat(drainAll()).isEmpty();
+    }
+
+    @Test
+    void hashCollisionsAndIdenticalCoordinatesInDifferentWorldsRemainDistinct() {
+        // Assert that probing really collided; distinct read counts then expose accidental merging.
+        int count = 1000;
+        for (int world = 0; world < 2; world++)
+            for (int x = 0; x < count; x++) capture.captureBlockChange(world, x, Y, 0, STONE, ACTOR, CAUSE, KIND);
+        var reads = new java.util.concurrent.atomic.AtomicInteger();
+        capture.confirmStaged((w, x, y, z) -> {
+            reads.incrementAndGet();
+            return STONE;
+        });
+        assertThat(reads.get()).isEqualTo(count * 2);
+        assertThat(capture.indexCollisions()).isPositive();
+        assertThat(capture.coalesced()).isZero();
+        assertThat(capture.rejectedUnchanged()).isEqualTo(count * 2);
+        assertThat(capture.dropped()).isZero();
     }
 
     private MappedEventRing ring() {

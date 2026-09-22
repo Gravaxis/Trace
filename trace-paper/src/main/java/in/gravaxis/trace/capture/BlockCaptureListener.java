@@ -15,6 +15,7 @@ import in.gravaxis.trace.core.record.RecordKind;
 import in.gravaxis.trace.dictionary.ActorDictionary;
 import in.gravaxis.trace.dictionary.BlockStateDictionary;
 import in.gravaxis.trace.dictionary.WorldDictionary;
+import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.event.EventHandler;
@@ -27,8 +28,8 @@ import org.bukkit.event.player.PlayerJoinEvent;
 /**
  * The capture surface for block changes.
  *
- * <p>Handlers run at {@code MONITOR} with {@code ignoreCancelled}, which is the only priority where
- * the outcome is settled, and they do the minimum: read coordinates, look two integers up in
+ * <p>Handlers run at {@code MONITOR} with {@code ignoreCancelled}, but later handlers and server
+ * processing can still change the outcome. They read coordinates, look two integers up in
  * arrays, and stage. No block-data string, no block snapshot, no map that can allocate — those are
  * what turn a logger into a tax on every block break.
  *
@@ -108,15 +109,16 @@ public final class BlockCaptureListener implements Listener {
 
     private int stateAt(int worldId, int x, int y, int z) {
         World world = worlds.worldOf(worldId);
-        if (world == null) {
+        if (world == null
+                || !Bukkit.isOwnedByCurrentRegion(world, x >> 4, z >> 4)
+                || !world.isChunkLoaded(x >> 4, z >> 4)) {
             return CaptureService.UNKNOWN_STATE;
         }
         try {
             return states.idOf(world.getType(x, y, z));
         } catch (RuntimeException e) {
-            // On a regionised server a region can be split between the event and the tick end, and
-            // this position may no longer belong to this thread. Publishing the record unconfirmed
-            // is the safe direction; the rollback engine verifies the world before touching it.
+            // A failed read is missing knowledge, not an unchanged block. ADR-0024 turns this
+            // sentinel into counted loss and a gap before rollback can trust this window.
             return CaptureService.UNKNOWN_STATE;
         }
     }

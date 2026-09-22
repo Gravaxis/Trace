@@ -40,6 +40,7 @@ val jmhRun = tasks.register<JavaExec>("jmhRun") {
   classpath = jmh.runtimeClasspath
   mainClass.set("org.openjdk.jmh.Main")
   outputs.file(jmhResultsFile)
+  outputs.upToDateWhen { false }
   javaLauncher.set(
     javaToolchains.launcherFor {
       languageVersion.set(JavaLanguageVersion.of(libs.versions.java.get().toInt()))
@@ -96,6 +97,29 @@ val testWithoutEscapeAnalysis = tasks.register<Test>("testWithoutEscapeAnalysis"
   classpath = sourceSets.test.get().runtimeClasspath
   jvmArgs("-XX:-DoEscapeAnalysis", "-XX:TieredStopAtLevel=1")
   filter { includeTestsMatching("*ExactAllocationTest") }
+  outputs.upToDateWhen { false }
+}
+
+tasks.register<Test>("confirmationAllocationTest") {
+  group = "verification"
+  testClassesDirs = sourceSets.test.get().output.classesDirs
+  classpath = sourceSets.test.get().runtimeClasspath
+  useJUnitPlatform()
+  filter { includeTestsMatching("*ExactAllocationTest") }
+  outputs.upToDateWhen { false }
+}
+
+tasks.register<JavaExec>("confirmationEvidence") {
+  group = "verification"
+  description = "Fresh confirmation branch, allocation and serial client/rollback regression evidence."
+  dependsOn(":trace-core:confirmationTest", ":trace-paper:confirmationTest",
+    "confirmationAllocationTest", "testWithoutEscapeAnalysis", "checkAllocationGate",
+    ":trace-test-harness:clientCaptureTest", ":trace-test-harness:integrationTest")
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("in.gravaxis.trace.bench.ConfirmationEvidence")
+  workingDir(rootProject.layout.projectDirectory)
+  args(rootProject.layout.projectDirectory.asFile.absolutePath)
+  outputs.upToDateWhen { false }
 }
 
 tasks.named("check") {
