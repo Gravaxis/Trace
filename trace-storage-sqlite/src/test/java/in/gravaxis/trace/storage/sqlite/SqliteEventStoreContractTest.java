@@ -17,6 +17,21 @@ import java.nio.file.Path;
 class SqliteEventStoreContractTest extends EventStoreContract {
 
     @Override
+    protected AutoCloseable failCaptureReference() throws Exception {
+        try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("manifest.db"));
+                var s = c.createStatement()) {
+            s.execute(
+                    "CREATE TRIGGER contract_capture BEFORE INSERT ON blob_ref BEGIN SELECT RAISE(ABORT,'contract capture fault'); END");
+        }
+        return () -> {
+            try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("manifest.db"));
+                    var s = c.createStatement()) {
+                s.execute("DROP TRIGGER contract_capture");
+            }
+        };
+    }
+
+    @Override
     protected long firstLiveShard() throws Exception {
         try (var c = java.sql.DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("manifest.db"));
                 var s = c.createStatement();

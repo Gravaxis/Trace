@@ -22,10 +22,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Writes events to the append-only journal, and forces them within a bounded window.
  *
- * <p>Every accepted event reaches this before it reaches the store, so that a crash costs at most
- * the unforced window rather than everything the store had not yet committed. What that buys, and
- * what it does not, is stated plainly in the documentation: forcing protects against a crashing
- * server always, and against a power cut up to the window.
+ * <p>Frames precede store publication so recovery can replay uncertain commits (ADR-0013).
+ * Payload handoffs force before acknowledgement (ADR-0023). The named process-kill gates do not
+ * establish power-loss or arbitrary-instruction crash guarantees.
  *
  * <p>Single-writer by construction: the consumer thread owns it.
  */
@@ -45,6 +44,19 @@ public final class JournalWriter implements AutoCloseable {
     private long segmentBase;
     private long position;
     private long forcedLsn;
+    private boolean failed;
+
+    @FunctionalInterface
+    interface WriteProbe {
+        void afterHeader() throws IOException;
+    }
+
+    private WriteProbe writeProbe = () -> {};
+
+    void writeProbe(WriteProbe probe) {
+        writeProbe = probe;
+    }
+
     private final ByteBuffer header =
             ByteBuffer.allocateDirect(JournalFrames.HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN);
     private ByteBuffer payload = ByteBuffer.allocateDirect(1 << 16).order(ByteOrder.LITTLE_ENDIAN);
@@ -155,6 +167,11 @@ public final class JournalWriter implements AutoCloseable {
         return writeFrame(JournalFrames.TYPE_GAP, 1, fromMillis, toMillis, fromMillis, payload);
     }
 
+    /** Blocking consumer operation; the envelope contains exact event and payload bytes. */
+    public long appendCaptured(CaptureEnvelope envelope, long from, long to, long lowWatermark) throws IOException {
+        return writeFrame(JournalFrames.TYPE_CAPTURED, 1, from, to, lowWatermark, ByteBuffer.wrap(envelope.encode()));
+    }
+
     /** Records that the server shut down in an orderly way, so a restart knows it did. */
     public long appendCleanClose(long nowMillis) throws IOException {
         payload.clear();
@@ -163,6 +180,18 @@ public final class JournalWriter implements AutoCloseable {
     }
 
     private long writeFrame(int type, int count, long minCapture, long maxCapture, long lowWatermark, ByteBuffer body)
+            throws IOException {
+        if (failed) throw new IOException("Journal requires reopen after failed write");
+        try {
+            return writeFrameUnchecked(type, count, minCapture, maxCapture, lowWatermark, body);
+        } catch (IOException e) {
+            failed = true;
+            throw e;
+        }
+    }
+
+    private long writeFrameUnchecked(
+            int type, int count, long minCapture, long maxCapture, long lowWatermark, ByteBuffer body)
             throws IOException {
         int payloadBytes = body.remaining();
         int framed = JournalFrames.HEADER_BYTES + JournalFrames.align(payloadBytes);
@@ -195,6 +224,7 @@ public final class JournalWriter implements AutoCloseable {
         header.putInt(JournalFrames.OFFSET_CRC, (int) crc.getValue());
 
         writeFully(header);
+        writeProbe.afterHeader();
         writeFully(body);
         int padding = JournalFrames.align(payloadBytes) - payloadBytes;
         if (padding > 0) {
@@ -232,14 +262,23 @@ public final class JournalWriter implements AutoCloseable {
 
     /** Flushes everything written so far to the device. */
     public void force() throws IOException {
-        channel.force(false);
+        if (failed) throw new IOException("Journal requires reopen after failed write");
+        try {
+            channel.force(false);
+        } catch (IOException e) {
+            failed = true;
+            throw e;
+        }
         forcedLsn = segmentBase + position;
     }
 
     @Override
     public void close() throws IOException {
-        force();
-        channel.close();
+        try {
+            if (!failed) force();
+        } finally {
+            channel.close();
+        }
     }
 
     static String segmentName(long base) {
@@ -261,6 +300,13 @@ public final class JournalWriter implements AutoCloseable {
     record JournalScan(@Nullable Path lastSegment, long lastSegmentBase, long endLsn) {
 
         static JournalScan scan(Path directory) throws IOException {
+            JournalReader.replay(directory, 0, new JournalReader.FrameHandler() {
+                @Override
+                public void frame(long lsn, int type, long[] words, int count, long min, long max) {}
+
+                @Override
+                public void captured(long lsn, CaptureEnvelope envelope, long min, long max) {}
+            });
             Path last = null;
             long lastBase = 0;
             try (var files = Files.list(directory)) {

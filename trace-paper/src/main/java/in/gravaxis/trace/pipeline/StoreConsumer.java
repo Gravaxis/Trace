@@ -51,6 +51,8 @@ public final class StoreConsumer implements Runnable {
     private final long forceIntervalMillis;
     private final long sealIntervalMillis;
     private final MaintenanceSchedule maintenance;
+    private final List<in.gravaxis.trace.core.capture.BoundedPayloadQueue> payloadQueues;
+    private final List<in.gravaxis.trace.storage.PayloadHandoff> payloadHandoffs;
 
     private final long[] buffer = new long[DRAIN_LIMIT * EventRecords.LONGS];
     private final RecordBatch batch = new RecordBatch(DRAIN_LIMIT);
@@ -90,6 +92,18 @@ public final class StoreConsumer implements Runnable {
             long forceIntervalMillis,
             long sealIntervalMillis,
             MaintenancePolicy policy) {
+        this(capture, journal, store, logger, forceIntervalMillis, sealIntervalMillis, policy, List.of());
+    }
+
+    public StoreConsumer(
+            CaptureService capture,
+            JournalWriter journal,
+            EventStore store,
+            Logger logger,
+            long forceIntervalMillis,
+            long sealIntervalMillis,
+            MaintenancePolicy policy,
+            List<in.gravaxis.trace.core.capture.BoundedPayloadQueue> payloadQueues) {
         this.capture = capture;
         this.journal = journal;
         this.store = store;
@@ -100,13 +114,17 @@ public final class StoreConsumer implements Runnable {
         this.lastSealAt = System.currentTimeMillis();
         this.lastDropCheckAt = System.currentTimeMillis();
         this.maintenance = new MaintenanceSchedule(store, policy, () -> !running, System.currentTimeMillis());
+        this.payloadQueues = List.copyOf(payloadQueues);
+        this.payloadHandoffs = payloadQueues.stream()
+                .map(in.gravaxis.trace.storage.PayloadHandoff::new)
+                .toList();
     }
 
     @Override
     public void run() {
         while (running) {
             try {
-                int drained = drainRings();
+                int drained = drainPayloads() + drainRings();
                 flushBuffer();
                 maybeForce();
                 maybeRecordDrops();
@@ -199,6 +217,16 @@ public final class StoreConsumer implements Runnable {
                 flushBuffer();
             }
         }
+        return total;
+    }
+
+    private int drainPayloads() throws IOException, StoreException {
+        int total = 0;
+        long oldest = capture.oldestStagedMillis();
+        for (var queue : payloadQueues) oldest = Math.min(oldest, queue.oldestPendingMillis());
+        for (var handoff : payloadHandoffs) total += handoff.drain(journal, store, oldest, DRAIN_LIMIT);
+        recordsStored.addAndGet(total);
+        framesWritten.addAndGet(total);
         return total;
     }
 
@@ -319,7 +347,7 @@ public final class StoreConsumer implements Runnable {
         while ((request = requests.poll()) != null) {
             try {
                 // Drain until the rings are empty, not just one pass: the caller is about to read.
-                while (drainRings() > 0) {
+                while (drainPayloads() + drainRings() > 0) {
                     flushBuffer();
                 }
                 flushBuffer();
@@ -343,6 +371,7 @@ public final class StoreConsumer implements Runnable {
         for (MappedEventRing ring : rings) {
             pending += ring.pending();
         }
+        for (var queue : payloadQueues) pending += queue.pending();
         return pending;
     }
 

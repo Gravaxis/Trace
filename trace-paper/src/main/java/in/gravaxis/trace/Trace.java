@@ -38,6 +38,88 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Trace extends JavaPlugin implements TraceApi {
 
+    /** Blocking synthetic transport fixture, only on the harness async thread; touches no world blocks. */
+    @ApiStatus.Internal
+    public String payloadHandoffForTest(String worldName) throws Exception {
+        if (!System.getProperty("trace.harness.scenario", "").equals("payload-handoff"))
+            throw new IllegalStateException("Only available in payload handoff harness");
+        TraceRuntime current = runtime;
+        World world = Bukkit.getWorld(worldName);
+        if (current == null || world == null) throw new IllegalStateException("Runtime or world absent");
+        int w = current.worlds().idOf(world), actor = ActorDictionary.HARNESS;
+        long time = System.currentTimeMillis();
+        int before = current.states().idOf(org.bukkit.Material.STONE),
+                after = current.states().idOf(org.bukkit.Material.DIRT);
+        var queue = current.payloadQueue(0);
+        var accepted = queue.offer(
+                in.gravaxis.trace.core.record.EventRecords.packPosition(2, 64, 3),
+                in.gravaxis.trace.core.record.EventRecords.packStates(before, after, 0),
+                in.gravaxis.trace.core.record.EventRecords.packActorTime(
+                        in.gravaxis.trace.core.time.TraceEpoch.toRelative(time), actor),
+                in.gravaxis.trace.core.record.EventRecords.packMetadata(1, w, 2, 1, actor, 0),
+                7,
+                new byte[] {0, -1, 3},
+                3,
+                time,
+                time);
+        var oversized = queue.offer(
+                0,
+                0,
+                0,
+                0,
+                0,
+                new byte[in.gravaxis.trace.core.journal.CaptureEnvelope.MAX_PAYLOAD + 1],
+                in.gravaxis.trace.core.journal.CaptureEnvelope.MAX_PAYLOAD + 1,
+                100,
+                200);
+        current.consumer().flushAndSeal(30_000);
+        var key = new in.gravaxis.trace.storage.CursorPosition(in.gravaxis.trace.core.geom.Morton.key(0, 0), time, 1);
+        String id = current.store().blobAt(w, key);
+        if (id == null) throw new IllegalStateException("No payload reference after flush");
+        byte[] bytes = current.store().readBlob(id);
+        var plan = ScanPlan.of(w, new BlockBox(0, 0, 0, 15, 100, 15), time, time + 1, ScanPlan.Order.NEWEST_FIRST);
+        StringBuilder rows = new StringBuilder();
+        try (var cursor = current.store().scan(plan)) {
+            var batch = new MutationBatch(16);
+            while (cursor.next(batch))
+                for (int i = 0; i < batch.size(); i++) {
+                    if (!rows.isEmpty()) rows.append(';');
+                    rows.append(batch.x(i))
+                            .append(',')
+                            .append(batch.y(i))
+                            .append(',')
+                            .append(batch.z(i))
+                            .append(',')
+                            .append(current.states().materialOf(batch.beforeState(i)))
+                            .append(',')
+                            .append(current.states().materialOf(batch.afterState(i)))
+                            .append(',')
+                            .append(batch.actorId(i))
+                            .append(',')
+                            .append(batch.cause(i))
+                            .append(',')
+                            .append(batch.kind(i))
+                            .append(',')
+                            .append(batch.timestamp(i) == time)
+                            .append(',')
+                            .append(batch.sequence(i));
+                }
+        }
+        boolean refused = false;
+        try {
+            current.rollback().rollback(world, plan.box(), time, time + 1, ActorDictionary.HARNESS);
+        } catch (in.gravaxis.trace.storage.StoreException expected) {
+            String message = expected.getMessage();
+            if (message == null || !message.contains("does not support")) throw expected;
+            refused = true;
+        }
+        var gaps = current.store().gapsBetween(100, 200);
+        boolean covering = gaps.stream()
+                .anyMatch(g -> g.fromMillis() <= 100 && g.toMillis() >= 200 && g.reason() == GapRecord.Reason.OVERFLOW);
+        return accepted + "|" + oversized + "|" + queue.pending() + "|"
+                + java.util.HexFormat.of().formatHex(bytes) + "|" + rows + "|" + covering + "|" + refused;
+    }
+
     /** Blocking, bounded fixture scan; called only from the client harness's async task. */
     @ApiStatus.Internal
     public String clientCaptureRows(String worldName, int x, int y, int z) throws Exception {

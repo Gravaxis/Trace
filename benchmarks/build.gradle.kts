@@ -210,6 +210,19 @@ tasks.register<JavaExec>("payloadQueueEvidence") {
   outputs.upToDateWhen { false }
 }
 
+tasks.register<JavaExec>("payloadIntegrationEvidence") {
+  group = "verification"
+  description = "Fresh payload failure, replay and serial pinned runtime evidence."
+  dependsOn(":trace-core:payloadJournalTest", ":trace-storage-sqlite:payloadIntegrationTest",
+    ":trace-paper:payloadConsumerTest", ":trace-test-harness:payloadHandoffTest",
+    ":trace-test-harness:clientCaptureTest", ":trace-test-harness:integrationTest")
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("in.gravaxis.trace.bench.PayloadIntegrationEvidence")
+  workingDir(rootProject.layout.projectDirectory)
+  args(rootProject.layout.projectDirectory.asFile.absolutePath)
+  outputs.upToDateWhen { false }
+}
+
 tasks.register<JavaExec>("m3MaintenanceEvidence") {
   group = "verification"
   description = "Records unit and serial maintenance-only evidence after a scoped storage change."

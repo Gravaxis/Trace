@@ -14,6 +14,15 @@ tasks.register<Copy>("generateConfigReference") {
   into(rootProject.layout.projectDirectory.dir("docs/generated"))
 }
 
+tasks.register<Test>("payloadConsumerTest") {
+  group = "verification"
+  testClassesDirs = sourceSets.test.get().output.classesDirs
+  classpath = sourceSets.test.get().runtimeClasspath
+  useJUnitPlatform()
+  filter { includeTestsMatching("*PayloadConsumerTest") }
+  outputs.upToDateWhen { false }
+}
+
 dependencies {
   implementation(project(":trace-api"))
   implementation(project(":trace-core"))
@@ -21,6 +30,9 @@ dependencies {
   implementation(project(":trace-storage-sqlite"))
   compileOnly(libs.snakeyaml)
   testImplementation(libs.snakeyaml)
+  testImplementation(libs.sqlite.jdbc)
+  testImplementation(libs.slf4j.api)
+  testImplementation(testFixtures(project(":trace-storage-api")))
 }
 
 paperPluginYaml {

@@ -8,6 +8,20 @@ tasks.test {
   systemProperty("trace.testClasspath", sourceSets.test.get().runtimeClasspath.asPath)
 }
 
+tasks.register<Test>("payloadIntegrationTest") {
+  group = "verification"
+  testClassesDirs = sourceSets.test.get().output.classesDirs
+  classpath = sourceSets.test.get().runtimeClasspath
+  systemProperty("trace.testClasspath", sourceSets.test.get().runtimeClasspath.asPath)
+  useJUnitPlatform()
+  filter {
+    includeTestsMatching("*PayloadIntegrationTest")
+    includeTestsMatching("*SqliteEventStoreContractTest")
+    includeTestsMatching("*StorageMigrationTest")
+  }
+  outputs.upToDateWhen { false }
+}
+
 dependencies {
   api(project(":trace-storage-api"))
 

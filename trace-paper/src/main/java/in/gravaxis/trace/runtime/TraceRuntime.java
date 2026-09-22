@@ -81,6 +81,7 @@ public final class TraceRuntime implements AutoCloseable {
     private final ActorDictionary actors;
     private final RollbackService rollback;
     private final RecoveryReport recovery;
+    private final in.gravaxis.trace.core.capture.PayloadQueues payloadQueues;
 
     private TraceRuntime(
             Plugin plugin,
@@ -95,7 +96,8 @@ public final class TraceRuntime implements AutoCloseable {
             BlockStateDictionary states,
             ActorDictionary actors,
             RollbackService rollback,
-            RecoveryReport recovery) {
+            RecoveryReport recovery,
+            in.gravaxis.trace.core.capture.PayloadQueues payloadQueues) {
         this.plugin = plugin;
         this.logger = logger;
         this.directory = directory;
@@ -109,6 +111,7 @@ public final class TraceRuntime implements AutoCloseable {
         this.actors = actors;
         this.rollback = rollback;
         this.recovery = recovery;
+        this.payloadQueues = payloadQueues;
     }
 
     /** Opens everything, recovers from whatever the last run left behind, and starts capturing. */
@@ -135,13 +138,47 @@ public final class TraceRuntime implements AutoCloseable {
         // would be discarded as a replay of something older — which is how a previous build lost a
         // whole session's history while reporting it as written.
         long floor = store.appliedLsn();
-        JournalWriter journal = JournalWriter.open(journalDirectory, JOURNAL_SEGMENT_BYTES, newSalt(), floor);
-        if (journal.nextLsn() <= floor) {
-            throw new IOException("The journal resumed at " + journal.nextLsn() + ", at or below the applied position "
-                    + floor + "; refusing to start rather than discard everything this run captures");
+        JournalWriter journal;
+        try {
+            journal = JournalWriter.open(journalDirectory, JOURNAL_SEGMENT_BYTES, newSalt(), floor);
+        } catch (IOException | RuntimeException failure) {
+            try {
+                store.close();
+            } catch (StoreException close) {
+                failure.addSuppressed(close);
+            }
+            throw failure;
         }
-        RecoveryReport recovery = recover(logger, journalDirectory, ringDirectory, store, journal);
-        CaptureRecovery.recordLoss(ringDirectory.resolve("capture.loss"), store);
+        RecoveryReport recovery;
+        in.gravaxis.trace.core.capture.PayloadQueues payloadQueues;
+        try {
+            if (journal.nextLsn() <= floor) throw new IOException("Journal resumed below its applied watermark");
+            recovery = recover(logger, journalDirectory, ringDirectory, store, journal);
+            CaptureRecovery.recordLoss(ringDirectory.resolve("capture.loss"), store);
+            Path payloadDirectory = directory.resolve("payload-queues");
+            // Recovery owns temporary handles: their consumer claims must not leak into the live worker.
+            try (var recovered = in.gravaxis.trace.core.capture.PayloadQueues.open(payloadDirectory)) {
+                long oldest = Long.MAX_VALUE;
+                for (var queue : recovered.queues()) oldest = Math.min(oldest, queue.oldestPendingMillis());
+                for (var queue : recovered.queues()) {
+                    var handoff = new in.gravaxis.trace.storage.PayloadHandoff(queue);
+                    while (handoff.drain(journal, store, oldest, 4096) > 0) {}
+                }
+            }
+            payloadQueues = in.gravaxis.trace.core.capture.PayloadQueues.open(payloadDirectory);
+        } catch (IOException | StoreException | RuntimeException failure) {
+            try {
+                journal.close();
+            } catch (IOException close) {
+                failure.addSuppressed(close);
+            }
+            try {
+                store.close();
+            } catch (StoreException close) {
+                failure.addSuppressed(close);
+            }
+            throw failure;
+        }
 
         // Read before the consumer thread starts, while the store still has one user. An operation
         // left running by the last process is a world that is neither the old one nor the new one,
@@ -160,7 +197,14 @@ public final class TraceRuntime implements AutoCloseable {
 
         CaptureService capture = new CaptureService(ringDirectory, RING_CAPACITY_RECORDS);
         StoreConsumer consumer = new StoreConsumer(
-                capture, journal, store, logger, FORCE_INTERVAL_MILLIS, SEAL_INTERVAL_MILLIS, maintenancePolicy);
+                capture,
+                journal,
+                store,
+                logger,
+                FORCE_INTERVAL_MILLIS,
+                SEAL_INTERVAL_MILLIS,
+                maintenancePolicy,
+                payloadQueues.queues());
         Thread consumerThread = new Thread(consumer, "trace-consumer");
         consumerThread.setDaemon(true);
         consumerThread.start();
@@ -179,7 +223,8 @@ public final class TraceRuntime implements AutoCloseable {
                 states,
                 actors,
                 rollback,
-                recovery);
+                recovery,
+                payloadQueues);
 
         Bukkit.getPluginManager().registerEvents(new BlockCaptureListener(capture, worlds, states, actors), plugin);
         return runtime;
@@ -200,20 +245,33 @@ public final class TraceRuntime implements AutoCloseable {
         RecordBatch batch = new RecordBatch(4096);
         long[] replayed = {0};
         JournalReader.ReplaySummary summary =
-                JournalReader.replay(journalDirectory, appliedLsn + 1, (lsn, type, words, count, min, max) -> {
-                    if (type != JournalFrames.TYPE_EVENTS || count == 0) {
-                        return;
+                JournalReader.replay(journalDirectory, appliedLsn + 1, new JournalReader.FrameHandler() {
+                    @Override
+                    public void captured(
+                            long lsn, in.gravaxis.trace.core.journal.CaptureEnvelope envelope, long min, long max)
+                            throws IOException {
+                        in.gravaxis.trace.storage.PayloadHandoff.replayInto(store)
+                                .captured(lsn, envelope, min, max);
+                        replayed[0]++;
                     }
-                    batch.clear();
-                    for (int i = 0; i < count; i++) {
-                        int base = i * EventRecords.LONGS;
-                        batch.add(words[base], words[base + 1], words[base + 2], words[base + 3]);
-                    }
-                    try {
-                        store.append(batch, lsn);
-                        replayed[0] += count;
-                    } catch (StoreException e) {
-                        throw new IOException("Replaying journal frame at " + lsn + " failed", e);
+
+                    @Override
+                    public void frame(long lsn, int type, long[] words, int count, long min, long max)
+                            throws IOException {
+                        if (type != JournalFrames.TYPE_EVENTS || count == 0) {
+                            return;
+                        }
+                        batch.clear();
+                        for (int i = 0; i < count; i++) {
+                            int base = i * EventRecords.LONGS;
+                            batch.add(words[base], words[base + 1], words[base + 2], words[base + 3]);
+                        }
+                        try {
+                            store.append(batch, lsn);
+                            replayed[0] += count;
+                        } catch (StoreException e) {
+                            throw new IOException("Replaying journal frame at " + lsn + " failed", e);
+                        }
                     }
                 });
         if (replayed[0] > 0) {
@@ -363,6 +421,11 @@ public final class TraceRuntime implements AutoCloseable {
         return consumer;
     }
 
+    /** Startup-preallocated transport; callers must use persisted dictionary ids and an exclusive producer slot. */
+    public in.gravaxis.trace.core.capture.BoundedPayloadQueue payloadQueue(int slot) {
+        return payloadQueues.queues().get(slot);
+    }
+
     /** Registers a world that loaded after startup. */
     public void registerWorld(World world) {
         worlds.register(world);
@@ -422,8 +485,10 @@ public final class TraceRuntime implements AutoCloseable {
 
     @Override
     public void close() {
+        boolean flushed = false;
         try {
             consumer.flushAndSeal(30_000);
+            flushed = true;
         } catch (StoreException e) {
             logger.warn("Could not flush cleanly on shutdown: {}", e.getMessage());
         }
@@ -433,14 +498,26 @@ public final class TraceRuntime implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        if (consumerThread.isAlive()) {
+            logger.error("Consumer has not stopped; retaining its mappings and store lock until process exit");
+            return;
+        }
         try {
             // The clean-close marker is how the next start knows it does not need a crash gap.
-            journal.appendCleanClose(System.currentTimeMillis());
-            journal.close();
+            try {
+                if (flushed) journal.appendCleanClose(System.currentTimeMillis());
+            } finally {
+                journal.close();
+            }
         } catch (IOException e) {
             logger.warn("Could not close the journal cleanly: {}", e.getMessage());
         }
         capture.close();
+        try {
+            payloadQueues.close();
+        } catch (IOException e) {
+            logger.warn("Could not close payload queues", e);
+        }
         try {
             store.close();
         } catch (StoreException e) {

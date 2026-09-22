@@ -245,6 +245,14 @@ public final class BoundedPayloadQueue implements AutoCloseable {
         return Math.max(0, get(TAIL) - get(HEAD));
     }
 
+    /** Consumer-thread snapshot used before journal publication to conservatively bound other pending queues. */
+    public long oldestPendingMillis() {
+        long head = get(HEAD);
+        return head == get(TAIL)
+                ? Long.MAX_VALUE
+                : memory.get(ValueLayout.JAVA_LONG, DATA + (head & (capacity - 1L)) * stride + 40);
+    }
+
     private long get(long offset) {
         return (long) LONG.getAcquire(memory, offset);
     }

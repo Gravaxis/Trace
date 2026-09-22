@@ -23,7 +23,7 @@ import java.util.zip.CRC32C;
 /**
  * Reads the journal back, and decides where it ends.
  *
- * <p>The end of the log is the first frame that fails any of the three integrity rules in
+ * <p>The end of the log is the first frame that fails either of the two integrity rules in
  * {@link JournalFrames}. Everything up to that point is replayed; everything after it never
  * happened, which is exactly the guarantee a crash needs: a torn tail costs the records inside it
  * and nothing else.
@@ -45,6 +45,11 @@ public final class JournalReader {
          * @param maxCapture latest capture timestamp in the frame
          */
         void frame(long lsn, int type, long[] words, int count, long minCapture, long maxCapture) throws IOException;
+
+        /** Old consumers must refuse payload frames rather than silently lose their trailing bytes. */
+        default void captured(long lsn, CaptureEnvelope envelope, long minCapture, long maxCapture) throws IOException {
+            throw new IOException("Consumer does not support captured payload frames");
+        }
     }
 
     private JournalReader() {}
@@ -109,14 +114,19 @@ public final class JournalReader {
 
                     int type = header.getShort(JournalFrames.OFFSET_TYPE);
                     int count = header.getInt(JournalFrames.OFFSET_COUNT);
+                    validateSemantics(type, count, payload);
                     long minCapture = header.getLong(JournalFrames.OFFSET_MIN_CAPTURE);
                     long maxCapture = header.getLong(JournalFrames.OFFSET_MAX_CAPTURE);
                     if (lsn >= fromLsn) {
-                        long[] words = new long[payloadBytes / Long.BYTES];
-                        payload.asLongBuffer().get(words);
-                        handler.frame(lsn, type, words, count, minCapture, maxCapture);
+                        if (type == JournalFrames.TYPE_CAPTURED) {
+                            handler.captured(lsn, CaptureEnvelope.decode(payload.array()), minCapture, maxCapture);
+                        } else {
+                            long[] words = new long[payloadBytes / Long.BYTES];
+                            payload.asLongBuffer().get(words);
+                            handler.frame(lsn, type, words, count, minCapture, maxCapture);
+                        }
                         frames++;
-                        records += type == JournalFrames.TYPE_EVENTS ? count : 0;
+                        records += type == JournalFrames.TYPE_EVENTS || type == JournalFrames.TYPE_CAPTURED ? count : 0;
                     }
                     cleanClose = type == JournalFrames.TYPE_CLEAN_CLOSE;
                     lastMaxCapture = Math.max(lastMaxCapture, maxCapture);
@@ -160,11 +170,35 @@ public final class JournalReader {
                 if (!checksumMatches(header, payload)) {
                     break;
                 }
+                validateSemantics(
+                        header.getShort(JournalFrames.OFFSET_TYPE), header.getInt(JournalFrames.OFFSET_COUNT), payload);
                 offset += JournalFrames.HEADER_BYTES + JournalFrames.align(payloadBytes);
                 end[0] = base + offset;
             }
         }
         return end[0];
+    }
+
+    private static void validateSemantics(int type, int count, ByteBuffer payload) throws IOException {
+        switch (type) {
+            case JournalFrames.TYPE_CAPTURED -> {
+                if (count != 1) throw new IOException("Invalid capture envelope count");
+                byte[] exact = new byte[payload.remaining()];
+                payload.duplicate().get(exact);
+                CaptureEnvelope.decode(exact);
+            }
+            case JournalFrames.TYPE_EVENTS -> {
+                if (count < 0 || (long) count * 32 != payload.remaining())
+                    throw new IOException("Invalid event frame length");
+            }
+            case JournalFrames.TYPE_GAP -> {
+                if (count != 1 || payload.remaining() != 32) throw new IOException("Invalid gap frame");
+            }
+            case JournalFrames.TYPE_CLEAN_CLOSE -> {
+                if (count != 0 || payload.hasRemaining()) throw new IOException("Invalid clean-close frame");
+            }
+            default -> throw new IOException("Unsupported journal frame type " + type);
+        }
     }
 
     private static boolean checksumMatches(ByteBuffer header, ByteBuffer payload) {

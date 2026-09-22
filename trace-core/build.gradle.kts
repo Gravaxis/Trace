@@ -30,3 +30,12 @@ tasks.register<Test>("payloadQueueTest") {
   filter { includeTestsMatching("*BoundedPayloadQueueTest") }
   outputs.upToDateWhen { false }
 }
+
+tasks.register<Test>("payloadJournalTest") {
+  group = "verification"
+  testClassesDirs = sourceSets.test.get().output.classesDirs
+  classpath = sourceSets.test.get().runtimeClasspath
+  useJUnitPlatform()
+  filter { includeTestsMatching("*CaptureEnvelopeTest") }
+  outputs.upToDateWhen { false }
+}

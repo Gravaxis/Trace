@@ -223,7 +223,7 @@ public final class SqliteEventStore implements EventStore {
                 if (legacy) statement.executeUpdate("INSERT INTO main.hot_event SELECT * FROM legacy.hot_event");
                 if (legacy) probe.accept("migration.copied");
                 statement.executeUpdate(
-                        "INSERT INTO meta(k,v) VALUES('format_version','3') ON CONFLICT(k) DO UPDATE SET v=excluded.v");
+                        "INSERT INTO meta(k,v) VALUES('format_version','4') ON CONFLICT(k) DO UPDATE SET v=excluded.v");
             }
             connection.commit();
             if (legacy) probe.accept("migration.committed");
@@ -347,6 +347,132 @@ public final class SqliteEventStore implements EventStore {
             throw new StoreException(StoreException.Reason.INTERNAL, "Append failed: " + e.getMessage(), e);
         } finally {
             setAutoCommitQuietly();
+        }
+    }
+
+    private java.util.function.Consumer<String> captureProbe = phase -> {};
+
+    void captureProbe(java.util.function.Consumer<String> probe) {
+        captureProbe = probe;
+    }
+
+    @Override
+    public synchronized void appendCaptured(in.gravaxis.trace.core.journal.CaptureEnvelope e, long lsn)
+            throws StoreException {
+        if (lsn <= appliedLsn) return;
+        if (EventRecords.aux(e.states()) != 0 || EventRecords.sidecar(e.metadata()) != 0)
+            throw new StoreException(StoreException.Reason.CORRUPT, "Unsupported captured event auxiliary fields");
+        long timestamp = TraceEpoch.toAbsolute(EventRecords.relativeMillis(e.actorTime()));
+        int actor = EventRecords.actorId(e.actorTime(), e.metadata());
+        int world = EventRecords.worldId(e.metadata());
+        long chunk = Morton.key(EventRecords.x(e.position()) >> 4, EventRecords.z(e.position()) >> 4);
+        var cursor = new CursorPosition(chunk, timestamp, EventRecords.sequence(e.metadata()));
+        byte[] bytes = e.payload();
+        String id = blobIdentity(e.version(), bytes);
+        try {
+            fullSynchronous();
+            writer.setAutoCommit(false);
+            if (!exclusions().stream().anyMatch(ex -> ex.matches(actor, timestamp))) {
+                boolean exists = capturedExists(writer, "main.hot_event", 0, world, cursor, e);
+                for (ShardRef shard : liveShards(timestamp, timestamp + 1)) {
+                    try (Connection reader = readShard(shardDirectory.resolve(shard.file()))) {
+                        if (capturedExists(reader, "ev", shard.baseMillis(), world, cursor, e)) {
+                            if (exists)
+                                throw new StoreException(StoreException.Reason.CORRUPT, "Duplicate capture identity");
+                            exists = true;
+                        }
+                    }
+                }
+                if (exists) {
+                    if (!id.equals(blobAt(world, cursor)))
+                        throw new StoreException(StoreException.Reason.CORRUPT, "Conflicting capture payload");
+                    if (!java.util.Arrays.equals(readBlob(id), bytes))
+                        throw new StoreException(StoreException.Reason.CORRUPT, "Conflicting capture bytes");
+                } else {
+                    try (var s = writer.prepareStatement(
+                            "INSERT INTO hot_event(w,c,k,p,b,a,actor,cause,kind,lsn) VALUES(?,?,?,?,?,?,?,?,?,?)")) {
+                        s.setInt(1, world);
+                        s.setLong(2, chunk);
+                        s.setLong(3, ShardKeys.key(0, timestamp, cursor.sequence()));
+                        s.setInt(
+                                4,
+                                ShardKeys.localPosition(
+                                        EventRecords.x(e.position()),
+                                        EventRecords.y(e.position()),
+                                        EventRecords.z(e.position())));
+                        s.setInt(5, EventRecords.beforeState(e.states()));
+                        s.setInt(6, EventRecords.afterState(e.states()));
+                        s.setInt(7, actor);
+                        s.setInt(8, EventRecords.cause(e.metadata()));
+                        s.setInt(9, EventRecords.kind(e.metadata()));
+                        s.setLong(10, lsn);
+                        s.executeUpdate();
+                    }
+                    captureProbe.accept("capture.row");
+                    try (var s = writer.prepareStatement(
+                            "INSERT INTO blob(id,version,payload) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING")) {
+                        s.setString(1, id);
+                        s.setInt(2, e.version());
+                        s.setBytes(3, bytes);
+                        s.executeUpdate();
+                    }
+                    if (!java.util.Arrays.equals(readBlob(id), bytes))
+                        throw new StoreException(StoreException.Reason.CORRUPT, "Conflicting capture bytes");
+                    try (var s = writer.prepareStatement(
+                            "INSERT INTO blob_ref(w,c,ts,seq,actor,blob_id) VALUES(?,?,?,?,?,?)")) {
+                        s.setInt(1, world);
+                        s.setLong(2, chunk);
+                        s.setLong(3, timestamp);
+                        s.setInt(4, cursor.sequence());
+                        s.setInt(5, actor);
+                        s.setString(6, id);
+                        s.executeUpdate();
+                    }
+                }
+            }
+            writeMeta(META_APPLIED_LSN, Long.toString(lsn));
+            writer.commit();
+            appliedLsn = lsn;
+            captureProbe.accept("capture.committed");
+        } catch (SQLException | StoreException | RuntimeException failure) {
+            rollbackQuietly();
+            if (failure instanceof StoreException known) throw known;
+            throw new StoreException(StoreException.Reason.DISK, "Atomic capture append failed", failure);
+        } finally {
+            setAutoCommitQuietly();
+            normalSynchronous();
+        }
+    }
+
+    private static boolean capturedExists(
+            Connection c,
+            String table,
+            long base,
+            int world,
+            CursorPosition cursor,
+            in.gravaxis.trace.core.journal.CaptureEnvelope e)
+            throws SQLException, StoreException {
+        try (var s = c.prepareStatement("SELECT p,b,a,actor,cause,kind FROM " + table + " WHERE w=? AND c=? AND k=?")) {
+            s.setInt(1, world);
+            s.setLong(2, cursor.chunkKey());
+            s.setLong(3, ShardKeys.key(base, cursor.timestamp(), cursor.sequence()));
+            try (var r = s.executeQuery()) {
+                if (!r.next()) return false;
+                int[] expected = {
+                    ShardKeys.localPosition(
+                            EventRecords.x(e.position()), EventRecords.y(e.position()), EventRecords.z(e.position())),
+                    EventRecords.beforeState(e.states()),
+                    EventRecords.afterState(e.states()),
+                    EventRecords.actorId(e.actorTime(), e.metadata()),
+                    EventRecords.cause(e.metadata()),
+                    EventRecords.kind(e.metadata())
+                };
+                for (int i = 0; i < expected.length; i++)
+                    if (r.getInt(i + 1) != expected[i])
+                        throw new StoreException(StoreException.Reason.CORRUPT, "Conflicting capture event");
+                if (r.next()) throw new StoreException(StoreException.Reason.CORRUPT, "Duplicate capture identity");
+                return true;
+            }
         }
     }
 

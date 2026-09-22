@@ -241,6 +241,7 @@ public final class RollbackService {
         OperationState finalState = OperationState.DONE;
 
         try (MutationCursor cursor = store.scan(plan)) {
+            in.gravaxis.trace.storage.RollbackPreflight.check(store, plan);
             long currentChunk = Long.MIN_VALUE;
             boolean any = false;
             boolean stopped = false;

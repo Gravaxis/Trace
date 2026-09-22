@@ -34,6 +34,39 @@ public final class StorageCrashWorker {
 
     public static void main(String[] args) throws Exception {
         Path directory = Path.of(args[0]);
+        if (args[1].equals("captured")) {
+            var event = in.gravaxis.trace.storage.testing.PayloadFixture.event();
+            var queue =
+                    in.gravaxis.trace.core.capture.BoundedPayloadQueue.open(directory.resolve("payload.queue"), 1, 8);
+            if (in.gravaxis.trace.storage.testing.PayloadFixture.offer(queue)
+                    != in.gravaxis.trace.core.capture.BoundedPayloadQueue.Offer.ACCEPTED)
+                throw new AssertionError("Accepted branch absent");
+            if (queue.offer(0, 0, 0, 0, 0, new byte[0], 0, 100, 200)
+                    != in.gravaxis.trace.core.capture.BoundedPayloadQueue.Offer.FULL)
+                throw new AssertionError("Full branch absent");
+            if (queue.offer(0, 0, 0, 0, 0, new byte[9], 9, 90, 210)
+                    != in.gravaxis.trace.core.capture.BoundedPayloadQueue.Offer.OVERSIZED)
+                throw new AssertionError("Oversized branch absent");
+            var store = SqliteEventStore.open(directory.resolve("store"));
+            var journal = in.gravaxis.trace.core.journal.JournalWriter.open(directory.resolve("journal"), 4096, 1);
+            if (args[2].equals("capture.queued")) ready(directory, args[2]);
+            if (args[2].equals("capture.journal")) {
+                journal.appendCaptured(
+                        event,
+                        in.gravaxis.trace.storage.testing.PayloadFixture.TIME,
+                        in.gravaxis.trace.storage.testing.PayloadFixture.TIME,
+                        90);
+                journal.force();
+                ready(directory, args[2]);
+            }
+            store.captureProbe(phase -> {
+                if (phase.equals(args[2])) ready(directory, phase);
+            });
+            int count = new in.gravaxis.trace.storage.PayloadHandoff(queue).drain(journal, store, Long.MAX_VALUE, 1);
+            if (count != 1 || queue.pending() != 0) throw new AssertionError("Acknowledgement absent");
+            if (args[2].equals("capture.acknowledged")) ready(directory, args[2]);
+            throw new AssertionError("Capture crash branch not reached");
+        }
         if (args[1].equals("migration")) {
             Path data = directory.resolve("store");
             Files.createDirectories(data);

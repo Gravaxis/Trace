@@ -71,7 +71,8 @@ class StorageCrashTest {
                                 var s = c.createStatement();
                                 var rows = s.executeQuery("SELECT v FROM meta WHERE k='format_version'")) {
                             assertThat(rows.next()).isTrue();
-                            assertThat(rows.getInt(1)).isEqualTo(phase.endsWith("committed") ? 3 : 2);
+                            assertThat(rows.getInt(1))
+                                    .isEqualTo(phase.endsWith("committed") ? SqliteSchema.FORMAT_VERSION : 2);
                         }
                     }
                     for (int reopening = 0; reopening < 2; reopening++) {

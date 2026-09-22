@@ -57,6 +57,7 @@ public final class TraceHarness extends JavaPlugin {
     private static final Map<String, Scenario> SCENARIOS = Map.ofEntries(
             Map.entry("boot", new BootScenario()),
             Map.entry("client-capture", new ClientCaptureScenario()),
+            Map.entry("payload-handoff", new in.gravaxis.trace.harness.scenarios.PayloadHandoffScenario()),
             Map.entry("block-churn", new BlockChurnScenario()),
             Map.entry("block-break-rollback", new BlockBreakRollbackScenario()),
             Map.entry("crash-write", new CrashWriteScenario()),

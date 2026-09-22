@@ -11,7 +11,7 @@ package in.gravaxis.trace.core.journal;
 /**
  * The journal's on-disk framing.
  *
- * <p>Three rules decide where the log ends, and all three exist because of a way a journal that
+ * <p>Two rules decide where the log ends, and both exist because of a way a journal that
  * looks correct is not (ADR-0013):
  *
  * <ol>
@@ -19,10 +19,8 @@ package in.gravaxis.trace.core.journal;
  *       routing field cannot send records to the wrong window undetected;
  *   <li>a frame records the position it was written at, and a frame read from anywhere else is not
  *       a frame;
- *   <li>a frame carries the salt of the segment it belongs to, so the leftovers of a recycled
- *       segment — which still have valid magic numbers and valid checksums — cannot be replayed as
- *       live data. This is the trick SQLite's own write-ahead log uses, for the same reason.
  * </ol>
+ * Salt changes identify restarts; they never invalidate an otherwise intact frame.
  */
 public final class JournalFrames {
 
@@ -34,6 +32,9 @@ public final class JournalFrames {
 
     /** Records of captured events. */
     public static final int TYPE_EVENTS = 1;
+
+    /** One event and its exact versioned payload, atomically applied by the store. */
+    public static final int TYPE_CAPTURED = 7;
 
     /** A window of lost events. */
     public static final int TYPE_GAP = 4;

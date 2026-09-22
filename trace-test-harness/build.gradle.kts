@@ -102,6 +102,14 @@ val smokePaper = registerScenario("smokePaper", "paper", "boot", 25591)
 val smokeFolia = registerScenario("smokeFolia", "folia", "boot", 25592)
 
 val clientPaper = registerScenario("clientPaper", "paper", "client-capture", 25608)
+val payloadPaper = registerScenario("payloadPaper", "paper", "payload-handoff", 25610)
+val payloadFolia = registerScenario("payloadFolia", "folia", "payload-handoff", 25611)
+listOf(payloadPaper, payloadFolia).forEach { task -> task.configure { outputs.upToDateWhen { false } } }
+tasks.register("payloadHandoffTest") {
+  group = "verification"
+  description = "Serial pinned runtime handoff, payload gap and rollback refusal proof."
+  dependsOn(payloadPaper, payloadFolia)
+}
 val clientFolia = registerScenario("clientFolia", "folia", "client-capture", 25609)
 listOf(clientPaper, clientFolia).forEach { task -> task.configure { outputs.upToDateWhen { false } } }
 tasks.register("clientCaptureTest") {
@@ -113,10 +121,12 @@ tasks.register("clientCaptureTest") {
 // The M2 definition of done: capture, store, roll back, on both platforms.
 val integrationPaper = registerScenario("integrationPaper", "paper", "block-break-rollback", 25596)
 val integrationFolia = registerScenario("integrationFolia", "folia", "block-break-rollback", 25597)
+listOf(integrationPaper, integrationFolia).forEach { task -> task.configure { outputs.upToDateWhen { false } } }
 
 // An interrupted rollback continues from where it stopped, also part of the M2 definition of done.
 val resumePaper = registerScenario("resumePaper", "paper", "rollback-resume", 25598)
 val resumeFolia = registerScenario("resumeFolia", "folia", "rollback-resume", 25599)
+listOf(resumePaper, resumeFolia).forEach { task -> task.configure { outputs.upToDateWhen { false } } }
 
 val purgePaper = registerScenario("purgePaper", "paper", "storage-purge", 25602)
 val purgeFolia = registerScenario("purgeFolia", "folia", "storage-purge", 25603)

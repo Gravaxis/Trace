@@ -31,6 +31,10 @@ import org.jspecify.annotations.Nullable;
  */
 public interface EventStore extends AutoCloseable {
 
+    /** Atomically applies an event, payload, reference and watermark. Dictionary ids must already be durable. */
+    void appendCaptured(in.gravaxis.trace.core.journal.CaptureEnvelope envelope, long journalPosition)
+            throws StoreException;
+
     /** Advances unpublished work, retaining progress across calls; cutoff applies only to RETAIN. */
     MaintenanceResult maintain(MaintenanceOperation operation, MaintenanceBudget budget, long cutoff)
             throws StoreException;

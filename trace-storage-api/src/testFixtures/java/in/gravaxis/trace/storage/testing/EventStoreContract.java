@@ -66,6 +66,100 @@ public abstract class EventStoreContract {
     /** Injects failure into quarantine's gap publication, removed when the handle closes. */
     protected abstract AutoCloseable failQuarantineGap() throws Exception;
 
+    /** Fails reference insertion after the event has been inserted in the same transaction. */
+    protected abstract AutoCloseable failCaptureReference() throws Exception;
+
+    @Test
+    void rollbackPreflightRefusesNonBlockHistoryWithoutPayload() throws Exception {
+        var events = line(1, T0);
+        var original = Events.batchOf(events);
+        var batch = new RecordBatch(1);
+        batch.add(
+                original.position(0),
+                original.states(0),
+                original.actorTime(0),
+                in.gravaxis.trace.core.record.EventRecords.packMetadata(0, WORLD, 1, 2, 7, 0));
+        store.append(batch, 0);
+        assertThat(store.seal()).isEqualTo(1);
+        assertThat(scanAll(planFor(events)))
+                .singleElement()
+                .satisfies(row -> assertThat(row.kind()).isEqualTo(2));
+        assertThat(store.blobAt(WORLD, new CursorPosition(in.gravaxis.trace.core.geom.Morton.key(0, 0), T0, 0)))
+                .isNull();
+        assertThatThrownBy(() -> in.gravaxis.trace.storage.RollbackPreflight.check(store, planFor(events)))
+                .isInstanceOf(StoreException.class)
+                .hasMessageContaining("does not support");
+    }
+
+    @Test
+    void capturedEventPayloadAndWatermarkAreAtomicAndRetriesSurviveMaintenance() throws Exception {
+        var events = line(2, T0);
+        var e = Events.batchOf(events);
+        var first = new in.gravaxis.trace.core.journal.CaptureEnvelope(
+                e.position(0), e.states(0), e.actorTime(0), e.metadata(0), 7, new byte[] {0, -1, 3});
+        var second = new in.gravaxis.trace.core.journal.CaptureEnvelope(
+                e.position(1), e.states(1), e.actorTime(1), e.metadata(1), 8, new byte[0]);
+        var key = new CursorPosition(in.gravaxis.trace.core.geom.Morton.key(0, 0), T0, 0);
+        try (var fault = failCaptureReference()) {
+            assertThatThrownBy(() -> store.appendCaptured(first, 10))
+                    .isInstanceOf(StoreException.class)
+                    .hasStackTraceContaining("contract capture fault");
+            assertThat(store.appliedLsn()).isEqualTo(-1);
+            assertThat(store.stats().hotRows()).isZero();
+            assertThat(store.blobAt(WORLD, key)).isNull();
+            assertThat(store.collectBlobs()).isZero();
+        }
+        store.close();
+        store = open(directory);
+        assertThat(store.appliedLsn()).isEqualTo(-1);
+        assertThat(store.stats().hotRows()).isZero();
+        store.appendCaptured(first, 10);
+        store.appendCaptured(first, 10);
+        store.appendCaptured(first, 11);
+        assertThat(store.stats().hotRows()).isEqualTo(1);
+        assertThat(store.appliedLsn()).isEqualTo(11);
+        String id = store.blobAt(WORLD, key);
+        assertThat(id).isNotNull();
+        assertThat(store.readBlob(java.util.Objects.requireNonNull(id))).containsExactly(0, -1, 3);
+        assertThat(store.putBlob(7, new byte[] {0, -1, 3})).isEqualTo(id);
+        var conflict = new in.gravaxis.trace.core.journal.CaptureEnvelope(
+                first.position(), first.states(), first.actorTime(), first.metadata(), 9, first.payload());
+        assertThatThrownBy(() -> store.appendCaptured(conflict, 12)).isInstanceOf(StoreException.class);
+        assertThat(store.appliedLsn()).isEqualTo(11);
+        var changed = new in.gravaxis.trace.core.journal.CaptureEnvelope(
+                first.position(),
+                first.states() ^ (1L << 40),
+                first.actorTime(),
+                first.metadata(),
+                first.version(),
+                first.payload());
+        assertThatThrownBy(() -> store.appendCaptured(changed, 12)).isInstanceOf(StoreException.class);
+        assertThat(store.appliedLsn()).isEqualTo(11);
+        assertThat(store.seal()).isEqualTo(1);
+        store.appendCaptured(first, 12);
+        store.appendCaptured(second, 13);
+        assertThat(store.seal()).isEqualTo(1);
+        assertThat(store.compact()).isEqualTo(2);
+        store.close();
+        store = open(directory);
+        store.appendCaptured(first, 14);
+        assertThat(scanAll(planFor(events))).containsExactlyElementsOf(oracle(events, planFor(events)));
+        assertThat(store.readBlob(java.util.Objects.requireNonNull(store.blobAt(WORLD, key))))
+                .containsExactly(0, -1, 3);
+        assertThatThrownBy(() -> in.gravaxis.trace.storage.RollbackPreflight.check(store, planFor(events)))
+                .isInstanceOf(StoreException.class)
+                .hasMessageContaining("does not support");
+        assertThat(store.purgeActor(events.getFirst().actorId(), T0, T0 + 1)).isEqualTo(1);
+        store.appendCaptured(first, 15);
+        assertThat(store.blobAt(WORLD, key)).isNull();
+        assertThat(store.collectBlobs()).isEqualTo(1);
+        assertThat(store.expireBefore(T0 + 2)).isEqualTo(1);
+        store.appendCaptured(second, 16);
+        assertThat(store.stats().hotRows() + store.stats().sealedRows()).isZero();
+        assertThat(store.collectBlobs()).isEqualTo(1);
+        assertThat(store.appliedLsn()).isEqualTo(16);
+    }
+
     @Test
     void quarantineAndRefusalGapAreAtomicAcrossFailureRetryAndReopen() throws Exception {
         List<Events> events = line(5, T0);

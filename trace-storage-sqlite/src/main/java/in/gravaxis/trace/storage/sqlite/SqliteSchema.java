@@ -30,7 +30,7 @@ import java.sql.Statement;
 final class SqliteSchema {
 
     /** Bumped when the on-disk format changes in a way a previous build cannot read. */
-    static final int FORMAT_VERSION = 3;
+    static final int FORMAT_VERSION = 4;
 
     private SqliteSchema() {}
 
