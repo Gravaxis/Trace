@@ -38,6 +38,53 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Trace extends JavaPlugin implements TraceApi {
 
+    /** Blocking harness barrier; registration itself still runs on the storage worker. */
+    @ApiStatus.Internal
+    public String registerHarnessActorForTest() throws Exception {
+        TraceRuntime current = runtime;
+        if (current == null || System.getProperty("trace.harness.scenario", "").isEmpty())
+            throw new IllegalStateException("Harness scenario required");
+        var uuid = java.util.UUID.fromString("00000000-0000-4000-8000-000000000001");
+        if (!current.dictionaryUpdates().actor(uuid, "#harness"))
+            throw new IllegalStateException("Harness registration rejected");
+        current.consumer().flushAndSeal(10000);
+        int id = current.actors().idOf(uuid);
+        if (id == ActorDictionary.UNKNOWN) throw new IllegalStateException("Harness identity was not published");
+        verifyDictionaryLockForTest();
+        return Integer.toString(id);
+    }
+
+    private void verifyDictionaryLockForTest() throws Exception {
+        var root = getDataFolder().toPath();
+        var paths = java.util.List.of(
+                root.resolve("actors.dict"), root.resolve("worlds.dict"), root.resolve("block-states.dict"));
+        var before = new java.util.ArrayList<java.nio.file.attribute.FileTime>();
+        for (var path : paths) before.add(java.nio.file.Files.getLastModifiedTime(path));
+        try (var second = TraceRuntime.start(this, getSLF4JLogger(), root)) {
+            throw new IllegalStateException("Second runtime acquired the writer lock");
+        } catch (in.gravaxis.trace.storage.StoreException expected) {
+            if (expected.reason() != in.gravaxis.trace.storage.StoreException.Reason.LOCKED) throw expected;
+        }
+        for (int i = 0; i < paths.size(); i++)
+            if (!java.nio.file.Files.getLastModifiedTime(paths.get(i)).equals(before.get(i)))
+                throw new IllegalStateException("Rejected runtime rewrote a dictionary");
+    }
+
+    /** Blocking test observation: flush the queued join, then independently reopen its identity. */
+    @ApiStatus.Internal
+    public String awaitActorForTest(String playerId) throws Exception {
+        TraceRuntime current = runtime;
+        if (current == null || !System.getProperty("trace.harness.scenario", "").equals("client-capture"))
+            throw new IllegalStateException("Client scenario required");
+        current.consumer().flushAndSeal(10000);
+        var uuid = java.util.UUID.fromString(playerId);
+        int live = current.actors().idOf(uuid);
+        int persisted = ActorDictionary.load(getDataFolder().toPath()).idOf(uuid);
+        if (live == ActorDictionary.UNKNOWN || live != persisted)
+            throw new IllegalStateException("Actor identity is not durable");
+        return "durable";
+    }
+
     /** Blocking synthetic transport fixture, only on the harness async thread; touches no world blocks. */
     @ApiStatus.Internal
     public String payloadHandoffForTest(String worldName) throws Exception {
@@ -516,7 +563,7 @@ public final class Trace extends JavaPlugin implements TraceApi {
             return "unavailable";
         }
         return ("captured=%d published=%d rejectedUnchanged=%d unconfirmed=%d dropped=%d outOfRange=%d stored=%d"
-                        + " coalesced=%d unreadable=%d stagingFull=%d ambiguous=%d invalidFields=%d")
+                        + " coalesced=%d unreadable=%d stagingFull=%d ambiguous=%d invalidFields=%d dependency=%d")
                 .formatted(
                         current.capture().captured(),
                         current.capture().published(),
@@ -529,7 +576,8 @@ public final class Trace extends JavaPlugin implements TraceApi {
                         current.capture().droppedUnreadable(),
                         current.capture().droppedStagingFull(),
                         current.capture().droppedAmbiguous(),
-                        current.capture().invalidFields());
+                        current.capture().invalidFields(),
+                        current.capture().droppedDependency());
     }
 
     /** Ensures a world loaded after startup has an id before anything in it is captured. */

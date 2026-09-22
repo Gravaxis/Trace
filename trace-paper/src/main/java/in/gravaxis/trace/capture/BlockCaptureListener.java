@@ -14,6 +14,7 @@ import in.gravaxis.trace.core.record.Cause;
 import in.gravaxis.trace.core.record.RecordKind;
 import in.gravaxis.trace.dictionary.ActorDictionary;
 import in.gravaxis.trace.dictionary.BlockStateDictionary;
+import in.gravaxis.trace.dictionary.DictionaryUpdates;
 import in.gravaxis.trace.dictionary.WorldDictionary;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
@@ -42,21 +43,29 @@ public final class BlockCaptureListener implements Listener {
     private final WorldDictionary worlds;
     private final BlockStateDictionary states;
     private final ActorDictionary actors;
+    private final DictionaryUpdates dictionaryUpdates;
     private final CaptureService.StateReader reader = this::stateAt;
 
     public BlockCaptureListener(
-            CaptureService capture, WorldDictionary worlds, BlockStateDictionary states, ActorDictionary actors) {
+            CaptureService capture,
+            WorldDictionary worlds,
+            BlockStateDictionary states,
+            ActorDictionary actors,
+            DictionaryUpdates dictionaryUpdates) {
         this.capture = capture;
         this.worlds = worlds;
         this.states = states;
         this.actors = actors;
+        this.dictionaryUpdates = dictionaryUpdates;
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         Block block = event.getBlock();
         int worldId = worlds.idOf(block.getWorld());
-        if (worldId < 0) {
+        int actorId = actors.idOf(event.getPlayer().getUniqueId());
+        if (worldId < 0 || actorId == ActorDictionary.UNKNOWN) {
+            capture.rejectMissingDependency();
             return;
         }
         capture.captureBlockChange(
@@ -65,7 +74,7 @@ public final class BlockCaptureListener implements Listener {
                 block.getY(),
                 block.getZ(),
                 states.idOf(block.getType()),
-                actors.idOf(event.getPlayer().getUniqueId()),
+                actorId,
                 Cause.BREAKING.id(),
                 RecordKind.BLOCK.id());
     }
@@ -74,7 +83,9 @@ public final class BlockCaptureListener implements Listener {
     public void onBlockPlace(BlockPlaceEvent event) {
         Block block = event.getBlock();
         int worldId = worlds.idOf(block.getWorld());
-        if (worldId < 0) {
+        int actorId = actors.idOf(event.getPlayer().getUniqueId());
+        if (worldId < 0 || actorId == ActorDictionary.UNKNOWN) {
+            capture.rejectMissingDependency();
             return;
         }
         capture.captureBlockChange(
@@ -85,7 +96,7 @@ public final class BlockCaptureListener implements Listener {
                 // The state the server already captured for the replaced block; no snapshot is
                 // taken here.
                 states.idOf(event.getBlockReplacedState().getType()),
-                actors.idOf(event.getPlayer().getUniqueId()),
+                actorId,
                 Cause.PLACING.id(),
                 RecordKind.BLOCK.id());
     }
@@ -101,10 +112,11 @@ public final class BlockCaptureListener implements Listener {
         capture.confirmStaged(reader);
     }
 
-    /** Ids are assigned when a player joins, never while capturing. */
+    /** Enqueue detached identity; the storage worker publishes the id after persistence. */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
-        actors.register(event.getPlayer().getUniqueId(), event.getPlayer().getName());
+        dictionaryUpdates.actor(
+                event.getPlayer().getUniqueId(), event.getPlayer().getName());
     }
 
     private int stateAt(int worldId, int x, int y, int z) {

@@ -8,8 +8,9 @@
 
 package in.gravaxis.trace.dictionary;
 
+import in.gravaxis.trace.core.record.EventRecords;
+import in.gravaxis.trace.storage.StoreException;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,7 +48,7 @@ public final class BlockStateDictionary {
     private final int[] idByOrdinal;
     private final Material[] materialById;
 
-    private BlockStateDictionary(Path file, Map<String, Integer> loaded) {
+    private BlockStateDictionary(Path file, Map<String, Integer> loaded) throws StoreException {
         this.file = file;
         this.idsByName.putAll(loaded);
 
@@ -66,6 +67,8 @@ public final class BlockStateDictionary {
         missing.sort((a, b) -> a.name().compareTo(b.name()));
         int next = idsByName.values().stream().mapToInt(Integer::intValue).max().orElse(-1) + 1;
         for (Material material : missing) {
+            if (next > EventRecords.MAX_STATE_ID)
+                throw new StoreException(StoreException.Reason.CORRUPT, "State dictionary id space exhausted");
             idsByName.put(material.name(), next++);
         }
 
@@ -85,20 +88,26 @@ public final class BlockStateDictionary {
     }
 
     /** Loads the mapping from the data directory, creating and extending it as needed. */
-    public static BlockStateDictionary load(Path directory) {
+    public static BlockStateDictionary load(Path directory) throws StoreException {
         Path file = directory.resolve(FILE_NAME);
         Map<String, Integer> loaded = new LinkedHashMap<>();
+        var seenIds = new java.util.HashSet<Integer>();
         try {
-            if (Files.isRegularFile(file)) {
+            if (Files.exists(file)) {
                 for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                     int equals = line.indexOf('=');
-                    if (equals > 0) {
-                        loaded.put(line.substring(0, equals), Integer.parseInt(line.substring(equals + 1)));
-                    }
+                    if (equals < 1) throw new IllegalArgumentException("Invalid state row");
+                    String name = line.substring(0, equals);
+                    int id = Integer.parseInt(line.substring(equals + 1));
+                    if (id < 0 || id > EventRecords.MAX_STATE_ID || loaded.containsKey(name) || !seenIds.add(id))
+                        throw new IllegalArgumentException("Duplicate or invalid state id");
+                    loaded.put(name, id);
                 }
             }
         } catch (IOException e) {
-            throw new UncheckedIOException("Could not read " + file, e);
+            throw new StoreException(StoreException.Reason.DISK, "Could not read " + file, e);
+        } catch (IllegalArgumentException e) {
+            throw new StoreException(StoreException.Reason.CORRUPT, "Invalid state dictionary " + file, e);
         }
         BlockStateDictionary dictionary = new BlockStateDictionary(file, loaded);
         dictionary.save();
@@ -119,15 +128,9 @@ public final class BlockStateDictionary {
         return idsByName.size();
     }
 
-    private void save() {
+    private void save() throws StoreException {
         StringBuilder out = new StringBuilder(idsByName.size() * 24);
         idsByName.forEach((name, id) -> out.append(name).append('=').append(id).append('\n'));
-        try {
-            Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(temporary, out.toString(), StandardCharsets.UTF_8);
-            Files.move(temporary, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Could not write " + file, e);
-        }
+        DictionaryFile.DEFAULT.replace(file, out.toString());
     }
 }

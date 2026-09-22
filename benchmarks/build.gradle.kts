@@ -122,6 +122,18 @@ tasks.register<JavaExec>("confirmationEvidence") {
   outputs.upToDateWhen { false }
 }
 
+tasks.register<JavaExec>("dictionaryEvidence") {
+  group = "verification"
+  description = "Fresh dictionary fault/crash tests and serial identity/runtime gates."
+  dependsOn(":trace-paper:dictionaryTest", "confirmationAllocationTest", "testWithoutEscapeAnalysis",
+    "checkAllocationGate", ":trace-test-harness:clientCaptureTest", ":trace-test-harness:integrationTest")
+  classpath = sourceSets.main.get().runtimeClasspath
+  mainClass.set("in.gravaxis.trace.bench.DictionaryEvidence")
+  workingDir(rootProject.layout.projectDirectory)
+  args(rootProject.layout.projectDirectory.asFile.absolutePath)
+  outputs.upToDateWhen { false }
+}
+
 tasks.named("check") {
   dependsOn(testWithoutEscapeAnalysis)
 }

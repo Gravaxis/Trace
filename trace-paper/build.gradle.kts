@@ -7,6 +7,20 @@ plugins {
 
 description = "The Trace plugin: listeners, commands, scheduling, configuration and the bootstrap."
 
+tasks.test {
+  systemProperty("trace.testClasspath", sourceSets.test.get().runtimeClasspath.asPath)
+}
+
+tasks.register<Test>("dictionaryTest") {
+  group = "verification"
+  testClassesDirs = sourceSets.test.get().output.classesDirs
+  classpath = sourceSets.test.get().runtimeClasspath
+  systemProperty("trace.testClasspath", sourceSets.test.get().runtimeClasspath.asPath)
+  useJUnitPlatform()
+  filter { includeTestsMatching("*DictionaryPublicationTest") }
+  outputs.upToDateWhen { false }
+}
+
 tasks.register<Copy>("generateConfigReference") {
   group = "documentation"
   description = "Generates the commented configuration reference from the packaged template."
@@ -41,6 +55,7 @@ dependencies {
   testImplementation(libs.snakeyaml)
   testImplementation(libs.sqlite.jdbc)
   testImplementation(libs.slf4j.api)
+  testRuntimeOnly(libs.paper.api)
   testImplementation(testFixtures(project(":trace-storage-api")))
 }
 

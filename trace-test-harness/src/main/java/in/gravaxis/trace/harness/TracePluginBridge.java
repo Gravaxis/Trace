@@ -48,6 +48,8 @@ public final class TracePluginBridge {
                     .getMethod("runRollback", String.class, int.class, int.class, int.class, int.class, long.class);
             Method counters = plugin.getClass().getMethod("captureCounters");
             Map<String, Method> optional = new LinkedHashMap<>();
+            put(optional, plugin, "registerHarnessActorForTest");
+            put(optional, plugin, "awaitActorForTest", String.class);
             // Seams a given Trace build may not have. A scenario that needs one says so by name and
             // fails with that sentence, rather than with a reflection stack trace.
             put(optional, plugin, "resumeRollback", long.class);

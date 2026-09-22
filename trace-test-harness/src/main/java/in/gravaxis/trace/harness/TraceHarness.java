@@ -99,7 +99,32 @@ public final class TraceHarness extends JavaPlugin {
 
         CompletableFuture<Void> done;
         try {
-            done = scenario.run(context);
+            var identity = new CompletableFuture<Void>();
+            Bukkit.getAsyncScheduler().runNow(this, task -> {
+                try {
+                    TracePluginBridge bridge = TracePluginBridge.find();
+                    if (bridge != null) {
+                        String registered = bridge.call("registerHarnessActorForTest");
+                        if (Integer.parseInt(registered) <= 0)
+                            throw new IllegalStateException("Fixture identity unavailable");
+                        result.detail("synthetic.actorRegistration", "persisted by storage worker before fixture");
+                        result.detail("dictionary.writerLock", "second runtime refused before dictionary replacement");
+                    }
+                    Bukkit.getGlobalRegionScheduler().execute(this, () -> {
+                        try {
+                            scenario.run(context).whenComplete((ignored, failure) -> {
+                                if (failure == null) identity.complete(null);
+                                else identity.completeExceptionally(failure);
+                            });
+                        } catch (Throwable failure) {
+                            identity.completeExceptionally(failure);
+                        }
+                    });
+                } catch (Throwable failure) {
+                    identity.completeExceptionally(failure);
+                }
+            });
+            done = identity;
         } catch (Throwable t) {
             record(result, t);
             finish(result);

@@ -302,6 +302,20 @@ The new edge cases are unit/consumer gates, not new natural event coverage.
 Full-state capture, dictionary publication and the remaining M4 families
 are still incomplete. Earlier evidence retains its original scope.
 
+**2026-09-22 dictionary publication follow-up:** the
+[plan/self-review](docs/design/m4-dictionary-publication.md) and
+[ADR-0025](docs/decisions/0025-durable-dictionary-publication.md) move live actor/world
+registration into a bounded worker queue. IDs publish after forced atomic file
+replacement; missing dependencies become counted capture loss. Startup obtains
+the writer lock before dictionary writes. Strict parsing rejects conflicting or
+out-of-range ids. The material dictionary keeps its previous fidelity.
+Unit, failure and announced process-kill gates are implemented; the
+`dictionaryEvidence` task collects fresh allocation and serial pinned runtime
+gates. Committed-source results are pending. Dynamic world-load events and a real
+player acting during failed registration are not yet exercised. Full block states,
+additional causes and natural payload families remain incomplete; dictionary/queue
+costs and listener allocation are **not measured**.
+
 Tracked in the ADRs rather than here, but the ones that shape upcoming work:
 
 * **M1** — whether JMH's `gc.alloc.rate.norm` can report exactly `0.0` for a provably empty

@@ -301,3 +301,15 @@ resume scenarios on both copied server pins. The
 also retains exact normal/cold allocation and JMH gate reports, plus the named
 core and consumer tests. New confirmation edge branches have unit/consumer proof;
 their natural server triggers are not established by these existing scenarios.
+
+## 2026-09-22: dictionary registration scheduling and identity APIs
+
+JDK 25 javap against both pinned Paper `26.2.build.126-stable` and Folia
+`26.2.build.7-beta` verified player identity/name access, `PlayerEvent.getPlayer`,
+inherited `WorldInfo.getUID`, `Bukkit.getAsyncScheduler/getGlobalRegionScheduler`,
+`AsyncScheduler.runNow(Plugin, Consumer)` and
+`GlobalRegionScheduler.execute(Plugin, Runnable)`. Live registration snapshots
+UUID/name on the event thread; the worker receives no World/Player object.
+The test harness uses the permitted async/global schedulers for its registration
+barrier. No server API or new production dependency was added to the dictionary
+writer. Tests use the existing pinned Paper API at test runtime only.

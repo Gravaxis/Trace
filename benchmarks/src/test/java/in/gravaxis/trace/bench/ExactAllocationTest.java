@@ -187,6 +187,18 @@ class ExactAllocationTest {
         assertZeroBytes(cleanest, "staging-full-loss");
     }
 
+    @Test
+    void missingDictionaryDependencyAllocatesNothingAndOnlyGaps() {
+        long published = harness.published();
+        long cleanest = quietestWindow(harness::tickMissingDependency);
+        long expected = measuredTicks() * CaptureHarness.RECORDS_PER_TICK;
+        assertThat(harness.service().droppedDependency()).isEqualTo(expected);
+        assertThat(harness.service().lossCount()).isEqualTo(expected);
+        assertThat(harness.dropped()).isEqualTo(expected);
+        assertThat(harness.published()).isEqualTo(published);
+        assertZeroBytes(cleanest, "missing-dictionary-loss");
+    }
+
     private static long measuredTicks() {
         return WARMUP_TICKS + (long) MEASURED_TICKS * MEASUREMENT_WINDOWS;
     }

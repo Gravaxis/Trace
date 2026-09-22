@@ -83,7 +83,7 @@ public final class ConfirmationEvidence {
         System.out.println("Generated confirmation evidence: " + output);
     }
 
-    private static void check(Path root, Path output, String module, String task, String name, Set<String> required)
+    static void check(Path root, Path output, String module, String task, String name, Set<String> required)
             throws Exception {
         Path input = root.resolve(module + "/build/test-results/" + task + "/TEST-" + name + ".xml");
         var factory = DocumentBuilderFactory.newInstance();

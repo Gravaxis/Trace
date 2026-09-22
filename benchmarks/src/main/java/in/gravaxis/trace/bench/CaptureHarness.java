@@ -189,6 +189,10 @@ public final class CaptureHarness implements AutoCloseable {
         return service;
     }
 
+    public void tickMissingDependency() {
+        for (int i = 0; i < RECORDS_PER_TICK; i++) service.rejectMissingDependency();
+    }
+
     private void stage(int records) {
         for (int i = 0; i < records; i++) {
             int next = counter++;

@@ -13,6 +13,7 @@ import in.gravaxis.trace.core.journal.JournalWriter;
 import in.gravaxis.trace.core.record.EventRecords;
 import in.gravaxis.trace.core.ring.MappedEventRing;
 import in.gravaxis.trace.core.time.TraceEpoch;
+import in.gravaxis.trace.dictionary.DictionaryUpdates;
 import in.gravaxis.trace.storage.EventStore;
 import in.gravaxis.trace.storage.GapRecord;
 import in.gravaxis.trace.storage.MaintenancePolicy;
@@ -26,6 +27,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
@@ -53,6 +55,7 @@ public final class StoreConsumer implements Runnable {
     private final MaintenanceSchedule maintenance;
     private final List<in.gravaxis.trace.core.capture.BoundedPayloadQueue> payloadQueues;
     private final List<in.gravaxis.trace.storage.PayloadHandoff> payloadHandoffs;
+    private final @Nullable DictionaryUpdates dictionaryUpdates;
 
     private final long[] buffer = new long[DRAIN_LIMIT * EventRecords.LONGS];
     private final RecordBatch batch = new RecordBatch(DRAIN_LIMIT);
@@ -104,6 +107,20 @@ public final class StoreConsumer implements Runnable {
             long sealIntervalMillis,
             MaintenancePolicy policy,
             List<in.gravaxis.trace.core.capture.BoundedPayloadQueue> payloadQueues) {
+        this(capture, journal, store, logger, forceIntervalMillis, sealIntervalMillis, policy, payloadQueues, null);
+    }
+
+    public StoreConsumer(
+            CaptureService capture,
+            JournalWriter journal,
+            EventStore store,
+            Logger logger,
+            long forceIntervalMillis,
+            long sealIntervalMillis,
+            MaintenancePolicy policy,
+            List<in.gravaxis.trace.core.capture.BoundedPayloadQueue> payloadQueues,
+            @Nullable DictionaryUpdates dictionaryUpdates) {
+        this.dictionaryUpdates = dictionaryUpdates;
         this.capture = capture;
         this.journal = journal;
         this.store = store;
@@ -124,6 +141,7 @@ public final class StoreConsumer implements Runnable {
     public void run() {
         while (running) {
             try {
+                if (dictionaryUpdates != null) dictionaryUpdates.drain(8);
                 int drained = drainPayloads() + drainRings();
                 flushBuffer();
                 maybeForce();
@@ -351,6 +369,7 @@ public final class StoreConsumer implements Runnable {
         Request request;
         while ((request = requests.poll()) != null) {
             try {
+                if (dictionaryUpdates != null) dictionaryUpdates.flush();
                 // Drain until the rings are empty, not just one pass: the caller is about to read.
                 while (drainPayloads() + drainRings() > 0) {
                     flushBuffer();

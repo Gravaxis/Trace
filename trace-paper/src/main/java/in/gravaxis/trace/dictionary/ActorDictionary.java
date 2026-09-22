@@ -8,12 +8,11 @@
 
 package in.gravaxis.trace.dictionary;
 
+import in.gravaxis.trace.storage.StoreException;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,34 +44,46 @@ public final class ActorDictionary {
     private static final int FIRST_PLAYER_ID = 16;
 
     private final Path file;
+    private final DictionaryFile writer;
     private final Map<UUID, Integer> idsByPlayer = new ConcurrentHashMap<>();
     private final Map<Integer, String> namesById = new ConcurrentHashMap<>();
     private final Map<Integer, UUID> playersById = new ConcurrentHashMap<>();
-    private int nextId = FIRST_PLAYER_ID;
+    private long nextId = FIRST_PLAYER_ID;
 
-    private ActorDictionary(Path file) {
+    private ActorDictionary(Path file, DictionaryFile writer) {
         this.file = file;
+        this.writer = writer;
     }
 
-    public static ActorDictionary load(Path directory) {
+    public static ActorDictionary load(Path directory) throws StoreException {
+        return load(directory, DictionaryFile.DEFAULT);
+    }
+
+    static ActorDictionary load(Path directory, DictionaryFile writer) throws StoreException {
         Path file = directory.resolve(FILE_NAME);
-        ActorDictionary dictionary = new ActorDictionary(file);
+        ActorDictionary dictionary = new ActorDictionary(file, writer);
         try {
-            if (Files.isRegularFile(file)) {
+            if (Files.exists(file)) {
                 for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                    String[] parts = line.split("\t", 3);
-                    if (parts.length == 3) {
-                        int id = Integer.parseInt(parts[0]);
-                        UUID uuid = UUID.fromString(parts[1]);
-                        dictionary.idsByPlayer.put(uuid, id);
-                        dictionary.playersById.put(id, uuid);
-                        dictionary.namesById.put(id, parts[2]);
-                        dictionary.nextId = Math.max(dictionary.nextId, id + 1);
-                    }
+                    String[] parts = line.split("\t", -1);
+                    if (parts.length != 3 || !validName(parts[2]))
+                        throw new IllegalArgumentException("Invalid actor row");
+                    int id = Integer.parseInt(parts[0]);
+                    UUID uuid = UUID.fromString(parts[1]);
+                    if (id < FIRST_PLAYER_ID
+                            || dictionary.idsByPlayer.containsKey(uuid)
+                            || dictionary.playersById.containsKey(id))
+                        throw new IllegalArgumentException("Duplicate or reserved actor id");
+                    dictionary.idsByPlayer.put(uuid, id);
+                    dictionary.playersById.put(id, uuid);
+                    dictionary.namesById.put(id, parts[2]);
+                    dictionary.nextId = Math.max(dictionary.nextId, (long) id + 1);
                 }
             }
         } catch (IOException e) {
-            throw new UncheckedIOException("Could not read " + file, e);
+            throw new StoreException(StoreException.Reason.DISK, "Could not read " + file, e);
+        } catch (IllegalArgumentException e) {
+            throw new StoreException(StoreException.Reason.CORRUPT, "Invalid actor dictionary " + file, e);
         }
         return dictionary;
     }
@@ -80,23 +91,21 @@ public final class ActorDictionary {
     /**
      * The id for a player, assigning one if this is the first time.
      *
-     * <p>Called when a player joins, not while capturing: the capture path only ever reads.
+     * <p>Blocking: called by the storage worker, never from a player event. The forward map is
+     * published last so capture can only see an id whose identity has survived persistence.
      */
-    public synchronized int register(UUID player, String name) {
+    public synchronized int register(UUID player, String name) throws StoreException {
+        if (!validName(name)) throw new StoreException(StoreException.Reason.CORRUPT, "Invalid actor name");
         Integer existing = idsByPlayer.get(player);
-        if (existing != null) {
-            if (!name.equals(namesById.get(existing))) {
-                // Names change; history keeps the id, and the current name is what gets displayed.
-                namesById.put(existing, name);
-                save();
-            }
-            return existing;
-        }
-        int id = nextId++;
-        idsByPlayer.put(player, id);
+        if (existing != null && name.equals(namesById.get(existing))) return existing;
+        if (existing == null && nextId > Integer.MAX_VALUE)
+            throw new StoreException(StoreException.Reason.CORRUPT, "Actor dictionary id space exhausted");
+        int id = existing == null ? (int) nextId : existing;
+        save(id, player, name);
         playersById.put(id, player);
         namesById.put(id, name);
-        save();
+        idsByPlayer.put(player, id);
+        if (existing == null) nextId++;
         return id;
     }
 
@@ -127,20 +136,40 @@ public final class ActorDictionary {
         return idsByPlayer.size();
     }
 
-    private void save() {
-        StringBuilder out = new StringBuilder(idsByPlayer.size() * 64);
-        playersById.forEach((id, uuid) -> out.append(id)
-                .append('\t')
-                .append(uuid)
-                .append('\t')
-                .append(namesById.getOrDefault(id, ""))
-                .append('\n'));
-        try {
-            Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(temporary, out.toString(), StandardCharsets.UTF_8);
-            Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Could not write " + file, e);
+    static boolean validName(String name) {
+        boolean fieldsSafe = !name.isEmpty()
+                && name.length() <= 256
+                && name.indexOf('\t') < 0
+                && name.indexOf('\n') < 0
+                && name.indexOf('\r') < 0
+                && name.indexOf('\0') < 0;
+        if (!fieldsSafe) return false;
+        for (int i = 0; i < name.length(); i++) {
+            char ch = name.charAt(i);
+            if (Character.isHighSurrogate(ch)) {
+                if (++i == name.length() || !Character.isLowSurrogate(name.charAt(i))) return false;
+            } else if (Character.isLowSurrogate(ch)) return false;
         }
+        return true;
+    }
+
+    private void save(int proposedId, UUID proposedPlayer, String proposedName) throws StoreException {
+        StringBuilder out = new StringBuilder(idsByPlayer.size() * 64);
+        playersById.forEach((id, uuid) -> {
+            if (id == proposedId) return;
+            out.append(id)
+                    .append('\t')
+                    .append(uuid)
+                    .append('\t')
+                    .append(namesById.getOrDefault(id, ""))
+                    .append('\n');
+        });
+        out.append(proposedId)
+                .append('\t')
+                .append(proposedPlayer)
+                .append('\t')
+                .append(proposedName)
+                .append('\n');
+        writer.replace(file, out.toString());
     }
 }

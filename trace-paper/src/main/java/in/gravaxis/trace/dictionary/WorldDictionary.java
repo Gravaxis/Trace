@@ -8,12 +8,12 @@
 
 package in.gravaxis.trace.dictionary;
 
+import in.gravaxis.trace.core.record.EventRecords;
+import in.gravaxis.trace.storage.StoreException;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -34,12 +34,14 @@ public final class WorldDictionary {
     private static final String FILE_NAME = "worlds.dict";
 
     private final Path file;
+    private final DictionaryFile writer;
     private final Map<UUID, Integer> idsByWorld = new ConcurrentHashMap<>();
     private final Map<Integer, UUID> worldsById = new ConcurrentHashMap<>();
     private volatile int nextId;
 
-    private WorldDictionary(Path file, Map<UUID, Integer> loaded) {
+    private WorldDictionary(Path file, Map<UUID, Integer> loaded, DictionaryFile writer) {
         this.file = file;
+        this.writer = writer;
         loaded.forEach((uuid, id) -> {
             idsByWorld.put(uuid, id);
             worldsById.put(id, uuid);
@@ -47,41 +49,65 @@ public final class WorldDictionary {
         this.nextId = loaded.values().stream().mapToInt(Integer::intValue).max().orElse(-1) + 1;
     }
 
-    public static WorldDictionary load(Path directory) {
+    public static WorldDictionary load(Path directory) throws StoreException {
+        return load(directory, DictionaryFile.DEFAULT);
+    }
+
+    static WorldDictionary load(Path directory, DictionaryFile writer) throws StoreException {
         Path file = directory.resolve(FILE_NAME);
         Map<UUID, Integer> loaded = new LinkedHashMap<>();
+        var seenIds = new java.util.HashSet<Integer>();
         try {
-            if (Files.isRegularFile(file)) {
+            if (Files.exists(file)) {
                 for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                     int equals = line.indexOf('=');
-                    if (equals > 0) {
-                        loaded.put(
-                                UUID.fromString(line.substring(0, equals)),
-                                Integer.parseInt(line.substring(equals + 1)));
-                    }
+                    if (equals < 1) throw new IllegalArgumentException("Invalid world row");
+                    UUID uuid = UUID.fromString(line.substring(0, equals));
+                    int id = Integer.parseInt(line.substring(equals + 1));
+                    if (id < 0 || id > EventRecords.MAX_WORLD_ID || loaded.containsKey(uuid) || !seenIds.add(id))
+                        throw new IllegalArgumentException("Duplicate or invalid world id");
+                    loaded.put(uuid, id);
                 }
             }
         } catch (IOException e) {
-            throw new UncheckedIOException("Could not read " + file, e);
+            throw new StoreException(StoreException.Reason.DISK, "Could not read " + file, e);
+        } catch (IllegalArgumentException e) {
+            throw new StoreException(StoreException.Reason.CORRUPT, "Invalid world dictionary " + file, e);
         }
-        return new WorldDictionary(file, loaded);
+        return new WorldDictionary(file, loaded, writer);
     }
 
-    /** Assigns ids to every loaded world. Called at startup and when a world is loaded. */
-    public synchronized void register(World world) {
-        if (idsByWorld.containsKey(world.getUID())) {
+    /** Blocking startup registration; live registration queues a detached UUID for the worker. */
+    public void register(World world) throws StoreException {
+        register(world.getUID());
+    }
+
+    /** Blocking; never touches a live world. */
+    public synchronized void register(UUID uuid) throws StoreException {
+        if (idsByWorld.containsKey(uuid)) {
             return;
         }
-        int id = nextId++;
-        idsByWorld.put(world.getUID(), id);
-        worldsById.put(id, world.getUID());
-        save();
+        if (nextId > EventRecords.MAX_WORLD_ID)
+            throw new StoreException(StoreException.Reason.CORRUPT, "World dictionary id space exhausted");
+        int id = nextId;
+        save(uuid, id);
+        worldsById.put(id, uuid);
+        idsByWorld.put(uuid, id);
+        nextId++;
     }
 
     /** The id of a world, or -1 if it has not been registered. */
     public int idOf(World world) {
-        Integer id = idsByWorld.get(world.getUID());
+        return idOf(world.getUID());
+    }
+
+    public int idOf(UUID world) {
+        Integer id = idsByWorld.get(world);
         return id == null ? -1 : id;
+    }
+
+    public @Nullable UUID uuidOf(int id) {
+        return worldsById.get(id);
     }
 
     /** The world an id names, or null if it is not loaded right now. */
@@ -94,15 +120,10 @@ public final class WorldDictionary {
         return idsByWorld.size();
     }
 
-    private void save() {
+    private void save(UUID proposedWorld, int proposedId) throws StoreException {
         StringBuilder out = new StringBuilder(idsByWorld.size() * 40);
         idsByWorld.forEach((uuid, id) -> out.append(uuid).append('=').append(id).append('\n'));
-        try {
-            Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(temporary, out.toString(), StandardCharsets.UTF_8);
-            Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Could not write " + file, e);
-        }
+        out.append(proposedWorld).append('=').append(proposedId).append('\n');
+        writer.replace(file, out.toString());
     }
 }

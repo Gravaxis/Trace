@@ -71,6 +71,7 @@ public final class CaptureService implements AutoCloseable {
     private final AtomicLong droppedUnconfirmedFlush = new AtomicLong();
     private final AtomicLong droppedAmbiguous = new AtomicLong();
     private final AtomicLong invalidFields = new AtomicLong();
+    private final AtomicLong droppedDependency = new AtomicLong();
     private final AtomicLong droppedSlotOverflow = new AtomicLong();
     private final AtomicLong droppedRingFull = new AtomicLong();
     private final AtomicLong outOfRange = new AtomicLong();
@@ -279,6 +280,17 @@ public final class CaptureService implements AutoCloseable {
         return invalidFields.get();
     }
 
+    /** No id is invented when a player/world dependency has not yet become durable. */
+    public void rejectMissingDependency() {
+        captured.incrementAndGet();
+        droppedDependency.incrementAndGet();
+        losses.record(System.currentTimeMillis() + maxClockDriftMillis);
+    }
+
+    public long droppedDependency() {
+        return droppedDependency.get();
+    }
+
     long indexCollisions() {
         Producer producer = producers.get();
         return producer == null ? 0 : producer.indexCollisions;
@@ -298,6 +310,7 @@ public final class CaptureService implements AutoCloseable {
                 + droppedUnconfirmedFlush.get()
                 + droppedAmbiguous.get()
                 + invalidFields.get()
+                + droppedDependency.get()
                 + outOfRange.get();
     }
 

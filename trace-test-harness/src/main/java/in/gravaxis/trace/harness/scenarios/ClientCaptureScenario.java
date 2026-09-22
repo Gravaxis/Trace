@@ -74,6 +74,13 @@ public final class ClientCaptureScenario implements Scenario {
                     String before = bridge.captureCounters();
                     try (var client = new LoopbackClient(Bukkit.getPort(), "TraceBot" + area)) {
                         Player player = observer.joined.get(30, TimeUnit.SECONDS);
+                        check(
+                                bridge.call(
+                                                "awaitActorForTest",
+                                                player.getUniqueId().toString())
+                                        .equals("durable"),
+                                "Joined player identity survives independent dictionary reopen");
+                        context.result().detail("area" + area + ".actorDictionary", "durable-before-actions");
                         client.awaitReady();
                         int teleports = client.teleports();
                         check(

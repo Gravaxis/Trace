@@ -19,6 +19,7 @@ import in.gravaxis.trace.core.ring.MappedEventRing;
 import in.gravaxis.trace.core.time.TraceEpoch;
 import in.gravaxis.trace.dictionary.ActorDictionary;
 import in.gravaxis.trace.dictionary.BlockStateDictionary;
+import in.gravaxis.trace.dictionary.DictionaryUpdates;
 import in.gravaxis.trace.dictionary.WorldDictionary;
 import in.gravaxis.trace.pipeline.StoreConsumer;
 import in.gravaxis.trace.rollback.RollbackService;
@@ -79,6 +80,7 @@ public final class TraceRuntime implements AutoCloseable {
     private final WorldDictionary worlds;
     private final BlockStateDictionary states;
     private final ActorDictionary actors;
+    private final DictionaryUpdates dictionaryUpdates;
     private final RollbackService rollback;
     private final RecoveryReport recovery;
     private final in.gravaxis.trace.core.capture.PayloadQueues payloadQueues;
@@ -97,7 +99,8 @@ public final class TraceRuntime implements AutoCloseable {
             ActorDictionary actors,
             RollbackService rollback,
             RecoveryReport recovery,
-            in.gravaxis.trace.core.capture.PayloadQueues payloadQueues) {
+            in.gravaxis.trace.core.capture.PayloadQueues payloadQueues,
+            DictionaryUpdates dictionaryUpdates) {
         this.plugin = plugin;
         this.logger = logger;
         this.directory = directory;
@@ -109,6 +112,7 @@ public final class TraceRuntime implements AutoCloseable {
         this.worlds = worlds;
         this.states = states;
         this.actors = actors;
+        this.dictionaryUpdates = dictionaryUpdates;
         this.rollback = rollback;
         this.recovery = recovery;
         this.payloadQueues = payloadQueues;
@@ -123,17 +127,30 @@ public final class TraceRuntime implements AutoCloseable {
         Files.createDirectories(journalDirectory);
         Files.createDirectories(ringDirectory);
 
-        WorldDictionary worlds = WorldDictionary.load(directory);
-        BlockStateDictionary states = BlockStateDictionary.load(directory);
-        ActorDictionary actors = ActorDictionary.load(directory);
-        Bukkit.getWorlds().forEach(worlds::register);
+        EventStore store = SqliteEventStore.open(directory.resolve("storage"));
+        WorldDictionary worlds;
+        BlockStateDictionary states;
+        ActorDictionary actors;
+        try {
+            worlds = WorldDictionary.load(directory);
+            actors = ActorDictionary.load(directory);
+            states = BlockStateDictionary.load(directory);
+            for (World world : Bukkit.getWorlds()) worlds.register(world);
+        } catch (StoreException | RuntimeException failure) {
+            try {
+                store.close();
+            } catch (StoreException close) {
+                failure.addSuppressed(close);
+            }
+            throw failure;
+        }
+        var dictionaryUpdates = new DictionaryUpdates(actors, worlds);
 
         // Identifies this process in the operation records it writes. An operation still marked
         // running with a different run id is one a crash interrupted; one with this run id may
         // simply still be going, and must not be resumed underneath itself.
         String runId = UUID.randomUUID().toString();
 
-        EventStore store = SqliteEventStore.open(directory.resolve("storage"));
         // Opened above whatever the store has already applied. Below it, every frame this run wrote
         // would be discarded as a replay of something older — which is how a previous build lost a
         // whole session's history while reporting it as written.
@@ -204,7 +221,8 @@ public final class TraceRuntime implements AutoCloseable {
                 FORCE_INTERVAL_MILLIS,
                 SEAL_INTERVAL_MILLIS,
                 maintenancePolicy,
-                payloadQueues.queues());
+                payloadQueues.queues(),
+                dictionaryUpdates);
         Thread consumerThread = new Thread(consumer, "trace-consumer");
         consumerThread.setDaemon(true);
         consumerThread.start();
@@ -224,9 +242,11 @@ public final class TraceRuntime implements AutoCloseable {
                 actors,
                 rollback,
                 recovery,
-                payloadQueues);
+                payloadQueues,
+                dictionaryUpdates);
 
-        Bukkit.getPluginManager().registerEvents(new BlockCaptureListener(capture, worlds, states, actors), plugin);
+        Bukkit.getPluginManager()
+                .registerEvents(new BlockCaptureListener(capture, worlds, states, actors, dictionaryUpdates), plugin);
         return runtime;
     }
 
@@ -428,7 +448,11 @@ public final class TraceRuntime implements AutoCloseable {
 
     /** Registers a world that loaded after startup. */
     public void registerWorld(World world) {
-        worlds.register(world);
+        dictionaryUpdates.world(world.getUID());
+    }
+
+    public DictionaryUpdates dictionaryUpdates() {
+        return dictionaryUpdates;
     }
 
     /**
@@ -460,6 +484,9 @@ public final class TraceRuntime implements AutoCloseable {
                         stats.gapCount()));
         lines.add("dictionaries: %d worlds, %d block states, %d actors"
                 .formatted(worlds.size(), states.size(), actors.size()));
+        lines.add(
+                "dictionary registration: " + dictionaryUpdates.pending() + " pending, " + dictionaryUpdates.rejected()
+                        + " rejected; " + capture.droppedDependency() + " captures gapped for unavailable identity");
         for (RollbackOperation operation : store.unfinishedOperations()) {
             // Never silently: an operation that is not finished means a region of the world is part
             // way between two states, and an operator who is not told cannot act on it.
