@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.bench.ExactAllocationTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-09-22T14:23:40.707Z" hostname="ISHWARS-PC" time="3.131">
+  <properties/>
+  <testcase name="a tick of real changes, packed and written to the ring, allocates nothing at all" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.493"/>
+  <testcase name="missingConfirmationAllocatesNothingAndRecordsLoss()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.212"/>
+  <testcase name="the counter itself can see an allocation, so a zero above means something" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.024"/>
+  <testcase name="stagingExhaustionAllocatesNothingAndDoesNotPublish()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="1.531"/>
+  <testcase name="a tick of events that changed nothing allocates nothing at all" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.13"/>
+  <testcase name="ambiguousObservationAllocatesNothingAndGapsBothInputs()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.216"/>
+  <testcase name="invalidPostStateAllocatesNothingAndCannotBePacked()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.12"/>
+  <testcase name="unconfirmedFlushAllocatesNothingAndOnlyGaps()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.124"/>
+  <testcase name="coalescedPublicationAllocatesNothingAndPublishesOneRowPerPosition()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.246"/>
+  <system-out><![CDATA[path=publishing windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=unavailable-loss windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=staging-full-loss windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=rejecting windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=ambiguous-loss windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=invalid-state-loss windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=unconfirmed-flush-loss windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=coalesced-publication windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

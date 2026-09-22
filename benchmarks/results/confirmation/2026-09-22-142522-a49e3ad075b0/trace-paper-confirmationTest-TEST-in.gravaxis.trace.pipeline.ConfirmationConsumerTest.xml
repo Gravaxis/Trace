@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.pipeline.ConfirmationConsumerTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-22T14:23:40.883Z" hostname="ISHWARS-PC" time="0.655">
+  <properties/>
+  <testcase name="flushRefusesFailedConfirmationGapAndRetryPersistsItWithoutInventedRows()" classname="in.gravaxis.trace.pipeline.ConfirmationConsumerTest" time="0.619"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+]]></system-err>
+</testsuite>

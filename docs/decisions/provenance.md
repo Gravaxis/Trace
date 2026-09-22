@@ -293,3 +293,11 @@ The playerless resume fixture initially failed with a capture gap; retaining its
 chunks with plugin tickets made the targeted Paper regression pass. The fixture
 now asserts readable confirmation and publication before attempting rollback.
 This is a fixture correction, not a guarantee that production chunks stay loaded.
+
+The follow-up `:benchmarks:confirmationEvidence` run against clean source
+`a49e3ad075b0` passed the existing real-client, block rollback and cancellation/
+resume scenarios on both copied server pins. The
+[generated result](../../benchmarks/results/confirmation/2026-09-22-142522-a49e3ad075b0/complete.json)
+also retains exact normal/cold allocation and JMH gate reports, plus the named
+core and consumer tests. New confirmation edge branches have unit/consumer proof;
+their natural server triggers are not established by these existing scenarios.

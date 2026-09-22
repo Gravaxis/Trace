@@ -92,3 +92,19 @@ read. The fixture now holds plugin chunk tickets, asserts ownership and checks
 the confirmation counters before rollback. The production loss behavior is
 unchanged. The targeted Paper retest passed; the full clean-source matrix still
 has to pass before this slice's evidence is complete.
+
+## Confirmation slice evidence
+
+The subsequent [complete run](../../benchmarks/results/confirmation/2026-09-22-142522-a49e3ad075b0/complete.json)
+passed against clean source `a49e3ad075b0`. Build/module checks, normal and cold
+exact allocation, JMH allocation, core loss branches, consumer refusal/retry and
+the serial pinned client/rollback/resume scenarios pass. An earlier collector
+run remained incomplete because its expected names did not account for JUnit
+display names; that generated result is preserved, not edited into a pass.
+
+Server tasks are serialized. Gradle may run non-server checks alongside them;
+the raw JMH timings are not an isolated comparison or a production cost claim.
+The listener's allocation and cost are **not measured**. Power-loss durability
+is unproven. Full-state capture, durable dictionary ordering, natural additional
+causes, block entities/containers and entity/session history remain unfinished.
+This closes the confirmation foundation only; M4 is not complete.

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.core.capture.CaptureServiceTest" tests="12" skipped="0" failures="0" errors="0" timestamp="2026-09-22T14:23:40.889Z" hostname="ISHWARS-PC" time="0.62">
+  <properties/>
+  <testcase name="an event that changed nothing is not recorded" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.197"/>
+  <testcase name="excessThreadsNeverShareAnSpscRingAndLossBoundsSurviveReopen()" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.13"/>
+  <testcase name="hashCollisionsAndIdenticalCoordinatesInDifferentWorldsRemainDistinct()" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.03"/>
+  <testcase name="a position the record cannot address is counted and never reaches the encoder" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.019"/>
+  <testcase name="packedFieldOverflowAndInvalidReaderStatesAreGappedBeforeEncoding()" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.022"/>
+  <testcase name="roundTripToFirstStateRejectsEveryObservationEvenWithMixedAttribution()" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.02"/>
+  <testcase name="an event that changed the world is recorded, with the state the world really took" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.014"/>
+  <testcase name="repeatedPositionKeepsFirstBeforeAndFinalAfterAndResetsIndex()" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.014"/>
+  <testcase name="a burst the slot clock cannot order is dropped, and counted as that and not as a full ring" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.094"/>
+  <testcase name="ambiguousChangedAttributionGapsAllObservations()" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.014"/>
+  <testcase name="unreadableAndExplicitFlushNeverPublishInventedRows()" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.014"/>
+  <testcase name="staging exhaustion gaps the loss instead of inventing an unconfirmed row" classname="in.gravaxis.trace.core.capture.CaptureServiceTest" time="0.013"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

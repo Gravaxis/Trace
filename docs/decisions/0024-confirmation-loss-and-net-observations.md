@@ -1,6 +1,6 @@
 # ADR-0024: Missing confirmation is loss; repeated positions are net observations
 
-* Status: accepted for implementation; gates pending
+* Status: implemented; scoped evidence recorded
 * Date: 2026-09-22
 * Milestone: M4 prerequisite
 
@@ -34,3 +34,10 @@ an ambiguous net observation is deliberately conservative. Gaps may cover more
 history than the actual loss, as with existing capture-loss handling. Spill,
 producer reclamation, power loss and listener allocation remain outside this
 change. The completion plan names the required branch and server regressions.
+
+The [clean-source evidence](../../benchmarks/results/confirmation/2026-09-22-142522-a49e3ad075b0/complete.json)
+contains the named core and consumer tests, normal/cold exact allocation reports,
+JMH allocation gate and serial Paper/Folia client/rollback/resume regressions.
+This does not extend the server scenarios' natural-event coverage to the new
+unit-tested edge cases. The initial incomplete collector result is retained;
+JUnit display names required correction before a complete report could be made.

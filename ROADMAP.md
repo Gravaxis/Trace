@@ -295,8 +295,11 @@ attribution on a changed position is gapped. Packed field overflow is rejected.
 Flush now refuses if capture-loss gaps cannot be persisted; its injected-failure
 regression failed before the fix. Runtime confirmation checks ownership and chunk
 availability before reading. The `confirmationEvidence` task records the scoped
-branch/allocation and existing serial server regressions; committed results are
-pending. Full-state capture, dictionary publication and the remaining M4 families
+branch/allocation and existing serial server regressions, with
+[committed-source results](benchmarks/results/confirmation/2026-09-22-142522-a49e3ad075b0/complete.json).
+Both pinned platforms pass the existing client, rollback and resume scenarios.
+The new edge cases are unit/consumer gates, not new natural event coverage.
+Full-state capture, dictionary publication and the remaining M4 families
 are still incomplete. Earlier evidence retains its original scope.
 
 Tracked in the ADRs rather than here, but the ones that shape upcoming work:
