@@ -268,6 +268,24 @@ recovery that converts rejection bounds into GapRecords remain unimplemented.
 Queue allocation and performance are **not measured**; power loss and crashes
 partway through an offer/rejection remain unproven.
 
+**2026-09-22 payload integration follow-up:** [ADR-0023](docs/decisions/0023-bounded-payload-handoff.md)
+connects the bounded queues to the live consumer and startup recovery. Event,
+payload, reference and applied watermark publish atomically; acknowledgement follows
+journal force and store commit. Failed handoffs prevent later ordinary frames from
+advancing the watermark, and successful flush requires persisted rejection gaps.
+Rollback preflight refuses opaque payloads and non-block history before applying
+chunks. Format 4 intentionally prevents the preceding format-3 runtime from opening
+the upgraded store.
+
+The [committed-source evidence](benchmarks/results/payload-integration/2026-09-22-095619-cba62e8af72b/complete.json)
+contains named failure/contract/process-kill tests and serial Paper/Folia payload,
+real-client, block rollback and cancellation/resume regressions. Payload server
+records are synthetic and use already-persisted dictionary ids. Ordered dictionary
+publication, full state/NBT fidelity, natural payload listeners and restoration
+remain incomplete. Power loss and arbitrary-instruction crashes remain unproven;
+payload allocation and performance are **not measured**. This follow-up resolves
+the transport integration prerequisite above, not M4's full capture gate.
+
 Tracked in the ADRs rather than here, but the ones that shape upcoming work:
 
 * **M1** — whether JMH's `gc.alloc.rate.norm` can report exactly `0.0` for a provably empty

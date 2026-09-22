@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.core.journal.CaptureEnvelopeTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-22T09:54:09.855Z" hostname="ISHWARS-PC" time="0.186">
+  <properties/>
+  <testcase name="validChecksumUnknownEnvelopeRefusesReopenWithoutTruncation()" classname="in.gravaxis.trace.core.journal.CaptureEnvelopeTest" time="0.116"/>
+  <testcase name="partialJournalWritePoisonsWriterUntilReopen()" classname="in.gravaxis.trace.core.journal.CaptureEnvelopeTest" time="0.024"/>
+  <testcase name="exactOddBytesLegacyAndRestartSaltReplayTogether()" classname="in.gravaxis.trace.core.journal.CaptureEnvelopeTest" time="0.027"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

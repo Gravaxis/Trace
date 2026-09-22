@@ -261,3 +261,17 @@ bounded-queue overflow policy; its performance statements were not adopted or
 compared. The owner chose to finish the client gate, then bound M4 payload queues.
 Trace's queue design follows its own nonblocking-producer and explicit-loss
 requirements, not an inferred contract from the screenshot.
+
+## 2026-09-22 — bounded payload integration on pinned runtimes
+
+The in-repository `:benchmarks:payloadIntegrationEvidence` task exercised the pinned
+Paper and Folia builds identified by the copied `servers.properties`, using their
+existing runtime SQLite driver. No new external dependency or Minecraft API was
+introduced. The synthetic payload scenario submits already-persisted dictionary
+ids through the actual runtime queue and consumer, checks exact stored fields and
+bytes, forces oversized rejection, and calls RollbackService to require payload
+refusal. Existing real-client and rollback scenarios run separately, serially.
+The source-labelled evidence is
+[here](../../benchmarks/results/payload-integration/2026-09-22-095619-cba62e8af72b/complete.json).
+This observation does not establish natural payload capture, independent client
+wire compatibility, NBT fidelity, power-loss safety or payload performance.

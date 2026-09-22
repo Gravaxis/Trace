@@ -83,3 +83,18 @@ scenario does not claim a natural Bukkit payload producer: it submits a syntheti
 record with already-persisted world/material/built-in actor ids, and checks exact
 row/bytes, the oversized branch, covering gap, empty queue and refusal through the
 actual RollbackService entry point. No block mutation is needed by this fixture.
+
+## Committed-source result
+
+Source `cba62e8af72b` passed the fresh evidence task on a clean tree. The generated
+[report](../../benchmarks/results/payload-integration/2026-09-22-095619-cba62e8af72b/complete.json)
+includes raw XML for the named journal, handoff, shared contract, migration and
+consumer gates, and reports from both pinned platforms for synthetic payload
+handoff, real-client capture, block rollback and cancellation/resume. Build,
+module graph and existing normal/cold allocation gates passed before that source
+commit. None of those allocation results measures the new payload handoff.
+
+The persisted pool and envelope now have an operational handoff and restart path.
+The remaining boundary is capture fidelity and dictionary publication: do not add
+real payload listeners until their ids, snapshots and tick-end confirmation have
+their own plan and proof.

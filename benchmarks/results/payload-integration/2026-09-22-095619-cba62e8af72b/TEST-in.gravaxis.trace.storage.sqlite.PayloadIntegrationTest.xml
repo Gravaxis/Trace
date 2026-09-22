@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.storage.sqlite.PayloadIntegrationTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-22T09:54:09.985Z" hostname="ISHWARS-PC" time="2.653">
+  <properties/>
+  <testcase name="journalFailureDoesNotAcknowledgeOrPublishTheEvent()" classname="in.gravaxis.trace.storage.sqlite.PayloadIntegrationTest" time="0.287"/>
+  <testcase name="transactionAndGapFailuresRetainQueueUntilSuccessfulRetry()" classname="in.gravaxis.trace.storage.sqlite.PayloadIntegrationTest" time="0.058"/>
+  <testcase name="realProcessKillsRecoverExactPayloadAndLossBoundsAtEveryAnnouncedBoundary()" classname="in.gravaxis.trace.storage.sqlite.PayloadIntegrationTest" time="2.264"/>
+  <testcase name="firstLossWithOnlyOnePersistedBoundRefusesTheWholeWindow()" classname="in.gravaxis.trace.storage.sqlite.PayloadIntegrationTest" time="0.021"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

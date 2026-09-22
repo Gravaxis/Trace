@@ -1,0 +1,17 @@
+{
+  "scenario": "payload-handoff",
+  "status": "PASS",
+  "params": {},
+  "details": {
+    "server.brand": "Folia",
+    "server.minecraftVersion": "26.2",
+    "server.version": "26.2-7-14b7fee (MC: 26.2)",
+    "server.regionised": "true",
+    "java.version": "25.0.4+7-LTS-189",
+    "heap.maxBytes": "1073741824",
+    "payload.facts": "ACCEPTED|OVERSIZED|0|00ff03|2,64,3,STONE,DIRT,2,2,1,true,1|true|true",
+    "proof.complete": "true"
+  },
+  "metrics": [],
+  "failures": []
+}
