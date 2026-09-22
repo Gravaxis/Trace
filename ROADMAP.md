@@ -311,7 +311,9 @@ the writer lock before dictionary writes. Strict parsing rejects conflicting or
 out-of-range ids. The material dictionary keeps its previous fidelity.
 Unit, failure and announced process-kill gates are implemented; the
 `dictionaryEvidence` task collects fresh allocation and serial pinned runtime
-gates. Committed-source results are pending. Dynamic world-load events and a real
+gates. The [committed-source run](benchmarks/results/dictionary/2026-09-22-154839-ce08d9dd14f5/complete.json)
+passes those gates, including actual client registration and writer-lock refusal
+before dictionary replacement on both pinned platforms. Dynamic world-load events and a real
 player acting during failed registration are not yet exercised. Full block states,
 additional causes and natural payload families remain incomplete; dictionary/queue
 costs and listener allocation are **not measured**.

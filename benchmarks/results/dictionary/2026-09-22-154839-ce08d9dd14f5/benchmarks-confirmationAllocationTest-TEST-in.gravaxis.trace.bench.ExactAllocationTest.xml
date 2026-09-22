@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.bench.ExactAllocationTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-09-22T15:46:55.540Z" hostname="ISHWARS-PC" time="1.713">
+  <properties/>
+  <testcase name="a tick of real changes, packed and written to the ring, allocates nothing at all" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.345"/>
+  <testcase name="missingConfirmationAllocatesNothingAndRecordsLoss()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.102"/>
+  <testcase name="the counter itself can see an allocation, so a zero above means something" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.019"/>
+  <testcase name="missingDictionaryDependencyAllocatesNothingAndOnlyGaps()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.038"/>
+  <testcase name="stagingExhaustionAllocatesNothingAndDoesNotPublish()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.69"/>
+  <testcase name="a tick of events that changed nothing allocates nothing at all" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.066"/>
+  <testcase name="ambiguousObservationAllocatesNothingAndGapsBothInputs()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.135"/>
+  <testcase name="invalidPostStateAllocatesNothingAndCannotBePacked()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.087"/>
+  <testcase name="unconfirmedFlushAllocatesNothingAndOnlyGaps()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.08"/>
+  <testcase name="coalescedPublicationAllocatesNothingAndPublishesOneRowPerPosition()" classname="in.gravaxis.trace.bench.ExactAllocationTest" time="0.113"/>
+  <system-out><![CDATA[path=publishing windowBytes=[2752, 0, 0, 0, 0] quietestBytes=0
+path=unavailable-loss windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=missing-dictionary-loss windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=staging-full-loss windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=rejecting windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=ambiguous-loss windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=invalid-state-loss windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=unconfirmed-flush-loss windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+path=coalesced-publication windowBytes=[0, 0, 0, 0, 0] quietestBytes=0
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -87,3 +87,14 @@ Power-loss durability, arbitrary-instruction crashes, filesystem corruption
 recovery, identity erasure, cross-version state migration, full-state/NBT fidelity,
 automatic retry after queue-full registration, or complete M4 capture. Queue and
 dictionary latency/size costs and listener allocation are **not measured**.
+
+## Implemented proof
+
+The [complete run](../../benchmarks/results/dictionary/2026-09-22-154839-ce08d9dd14f5/complete.json)
+identifies clean source `ce08d9dd14f5`. Named queue, invalid-name, parsing, consumer
+failure/retry and announced child-process kill branches pass, as do normal/cold
+exact allocation and serial pinned client/rollback/resume gates. Client identities
+are reopened from the persisted actor dictionary before actions; every server
+scenario asserts a second runtime is refused before modifying dictionaries.
+Dynamic world-load events and real player actions during failed registration
+remain untested. The evidence closes this prerequisite, not M4.

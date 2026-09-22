@@ -313,3 +313,26 @@ UUID/name on the event thread; the worker receives no World/Player object.
 The test harness uses the permitted async/global schedulers for its registration
 barrier. No server API or new production dependency was added to the dictionary
 writer. Tests use the existing pinned Paper API at test runtime only.
+
+## 2026-09-22: dictionary publication runtime evidence
+
+The [generated dictionary run](../../benchmarks/results/dictionary/2026-09-22-154839-ce08d9dd14f5/complete.json)
+records clean source `ce08d9dd14f5`. Both pinned platforms passed real-client,
+block rollback and cancellation/resume scenarios. The gates explicitly assert
+durable client actor identities and second-writer refusal before dictionary
+replacement. Named unit, injected-failure and announced process-kill branches
+also passed. These checks do not exercise dynamic world-load events or real
+player actions during registration failure.
+
+## 2026-09-22: full-state implementation inventory (not runtime proof)
+
+JDK 25 javap against the pinned server jars under
+`trace-test-harness/build/test-servers/integrationPaper/versions/26.2/` and
+`integrationFolia/versions/26.2/` verified on both: CraftBlock.getBlockState,
+CraftBlockState.getHandle, CraftBlockData.getState and static createData(BlockState),
+Block.BLOCK_STATE_REGISTRY and static getId(BlockState), and IdMapper.getId,
+iterator and size. Both pinned API jars expose BlockData.getAsString,
+Bukkit.createBlockData(String), Bukkit.getUnsafe, UnsafeValues.getDataVersion,
+Block.getBlockData/setBlockData and BlockState.getBlockData/setBlockData.
+These are signature observations for the next slice, not proof of runtime
+capability, allocation, property fidelity or restoration safety.

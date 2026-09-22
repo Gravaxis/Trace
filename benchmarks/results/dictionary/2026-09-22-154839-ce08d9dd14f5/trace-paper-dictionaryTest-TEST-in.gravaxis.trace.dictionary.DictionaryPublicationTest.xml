@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="in.gravaxis.trace.dictionary.DictionaryPublicationTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-22T15:46:55.736Z" hostname="ISHWARS-PC" time="2.413">
+  <properties/>
+  <testcase name="consumerFailureThenRetryKeepsMissingIdentityGappedAndPublishedIdentityDurable()" classname="in.gravaxis.trace.dictionary.DictionaryPublicationTest" time="0.633"/>
+  <testcase name="boundedAdmissionAndFailedHeadRetainIdentityUntilPersistenceSucceeds()" classname="in.gravaxis.trace.dictionary.DictionaryPublicationTest" time="0.024"/>
+  <testcase name="invalidNamesCannotPoisonTheRegistrationHead()" classname="in.gravaxis.trace.dictionary.DictionaryPublicationTest" time="0.01"/>
+  <testcase name="realProcessKillsAtForceReplaceAndPublishPreserveRecoverableIdentity()" classname="in.gravaxis.trace.dictionary.DictionaryPublicationTest" time="1.598"/>
+  <testcase name="concurrentAdmissionCannotExceedBoundAndEveryAcceptedIdentityPublishes()" classname="in.gravaxis.trace.dictionary.DictionaryPublicationTest" time="0.026"/>
+  <testcase name="malformedDuplicateAndExhaustedDictionariesRefuseWithoutChangingBytes()" classname="in.gravaxis.trace.dictionary.DictionaryPublicationTest" time="0.041"/>
+  <testcase name="forceAndReplaceFailuresCannotPublishIdentityAndRetryPreservesIds()" classname="in.gravaxis.trace.dictionary.DictionaryPublicationTest" time="0.044"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+]]></system-err>
+</testsuite>

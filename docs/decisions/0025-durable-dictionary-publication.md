@@ -1,6 +1,6 @@
 # ADR-0025: Dictionary ids become visible only after persistence
 
-* Status: implementation; committed-source evidence pending
+* Status: accepted and implemented; scoped evidence recorded
 * Date: 2026-09-22
 * Milestone: M4 prerequisite
 
@@ -35,3 +35,12 @@ limits. Process-kill tests cover announced force, replacement and publication
 boundaries. They do not prove power-loss directory durability, arbitrary instruction
 crashes, corruption recovery, erased identities, cross-version state migration,
 full-state/NBT capture or complete M4. Costs and listener allocation are **not measured**.
+
+The [clean-source run](../../benchmarks/results/dictionary/2026-09-22-154839-ce08d9dd14f5/complete.json)
+passes named dictionary unit/fault/process-kill tests, normal and cold exact
+allocation gates, and serial client/rollback/resume regressions on both pins.
+The runtime gates assert second-writer refusal before dictionary replacement;
+actual client identities are independently reopened before actions begin.
+Dynamic world-load events and a real player acting during failed registration
+remain unexercised. Concurrent non-server checks make the raw JMH timings unsuitable
+for an isolated performance comparison.
