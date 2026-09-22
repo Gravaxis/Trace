@@ -284,3 +284,12 @@ Verified with JDK 25 javap against both pinned API jars, Paper
 `World.isChunkLoaded(int, int)` exist. `BlockCaptureListener.stateAt` checks the
 chunk coordinates before its world read. This signature check does not alone
 prove runtime ownership behavior; the serial client regression remains required.
+
+The same javap check verified `World.addPluginChunkTicket(int, int, Plugin)` on
+both API pins. Paper implementation bytecode from the pinned server jar confirms
+the ownership overload forwards chunk coordinates to `TickThread.isTickThreadFor`
+and `CraftWorld.isChunkLoaded` delegates to `ServerChunkCache.isChunkLoaded`.
+The playerless resume fixture initially failed with a capture gap; retaining its
+chunks with plugin tickets made the targeted Paper regression pass. The fixture
+now asserts readable confirmation and publication before attempting rollback.
+This is a fixture correction, not a guarantee that production chunks stay loaded.

@@ -127,6 +127,11 @@ public final class RollbackResumeScenario implements Scenario {
 
         CompletableFuture.allOf(loaded)
                 .thenCompose(ignored -> onEachRegion(context, world, areas, area -> {
+                    result.require(
+                            world.addPluginChunkTicket(area.chunkX(), area.chunkZ(), context.plugin()),
+                            "Fixture must retain its otherwise playerless chunk through confirmation");
+                    result.require(
+                            Bukkit.isOwnedByCurrentRegion(world, area.chunkX(), area.chunkZ()), "Fixture owns chunk");
                     for (int[] position : area.positions()) {
                         world.getBlockAt(position[0], position[1], position[2]).setType(Material.STONE, false);
                     }
@@ -144,6 +149,19 @@ public final class RollbackResumeScenario implements Scenario {
                 // the rollback.
                 .thenCompose(ignored -> afterTicks(context, world, areas, 5L))
                 .thenRun(() -> {
+                    String counters;
+                    try {
+                        counters = trace.captureCounters();
+                    } catch (Exception e) {
+                        throw new java.util.concurrent.CompletionException(e);
+                    }
+                    result.detail("capture.confirmed", counters);
+                    result.require(
+                            TracePluginBridge.counter(counters, "unreadable") == 0,
+                            "Confirmation could not read retained fixture chunks: " + counters);
+                    result.require(
+                            TracePluginBridge.counter(counters, "published") == areas.size() * BLOCKS_PER_AREA,
+                            "Fixture did not publish every changed position: " + counters);
                     if (phase.equals("rollback-crash-prepare")) {
                         result.detail("crash.prepared", true);
                         done.complete(null); // Normal server shutdown saves the broken world and history.

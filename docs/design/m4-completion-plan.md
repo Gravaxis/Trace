@@ -82,3 +82,13 @@ API inventory before code. No pending row receives supported status from a plan.
   published, coalesced, rejected and each specific loss counter alongside rows.
 * Existing allocation evidence is for older bytecode. Generate new committed raw
   evidence after a clean source commit; do not relabel or edit an older run.
+
+## Regression finding
+
+The first serial resume regression refused with a capture gap. The playerless
+fixture loaded chunks transiently but did not retain them through tick end. With
+the new availability precheck this can no longer be hidden by reloading during a
+read. The fixture now holds plugin chunk tickets, asserts ownership and checks
+the confirmation counters before rollback. The production loss behavior is
+unchanged. The targeted Paper retest passed; the full clean-source matrix still
+has to pass before this slice's evidence is complete.

@@ -98,8 +98,14 @@ public final class BlockBreakRollbackScenario implements Scenario {
                         areas,
                         area -> world.getChunkAtAsync(area.chunkX(), area.chunkZ(), true)
                                 .thenApply(chunk -> Boolean.TRUE))
-                .thenCompose(loaded ->
-                        allOf(areas, area -> onRegion(context, world, area, 0, task -> prepare(world, area))))
+                .thenCompose(loaded -> allOf(
+                        areas,
+                        area -> onRegion(context, world, area, 0, task -> {
+                            result.require(
+                                    world.addPluginChunkTicket(area.chunkX(), area.chunkZ(), context.plugin()),
+                                    "Fixture retains its playerless chunk through confirmation");
+                            prepare(world, area);
+                        })))
                 .thenCompose(prepared -> {
                     result.detail("history.startedAt", System.currentTimeMillis());
                     return allOf(

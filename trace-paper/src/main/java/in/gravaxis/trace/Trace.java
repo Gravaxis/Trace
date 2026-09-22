@@ -515,7 +515,8 @@ public final class Trace extends JavaPlugin implements TraceApi {
         if (current == null) {
             return "unavailable";
         }
-        return "captured=%d published=%d rejectedUnchanged=%d unconfirmed=%d dropped=%d outOfRange=%d stored=%d"
+        return ("captured=%d published=%d rejectedUnchanged=%d unconfirmed=%d dropped=%d outOfRange=%d stored=%d"
+                        + " coalesced=%d unreadable=%d stagingFull=%d ambiguous=%d invalidFields=%d")
                 .formatted(
                         current.capture().captured(),
                         current.capture().published(),
@@ -523,7 +524,12 @@ public final class Trace extends JavaPlugin implements TraceApi {
                         current.capture().unconfirmed(),
                         current.capture().dropped(),
                         current.capture().outOfRange(),
-                        current.consumer().recordsStored());
+                        current.consumer().recordsStored(),
+                        current.capture().coalesced(),
+                        current.capture().droppedUnreadable(),
+                        current.capture().droppedStagingFull(),
+                        current.capture().droppedAmbiguous(),
+                        current.capture().invalidFields());
     }
 
     /** Ensures a world loaded after startup has an id before anything in it is captured. */
